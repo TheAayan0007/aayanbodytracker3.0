@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Aayan Body Tracker — v3.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:       #010409;
+  --panel:    rgba(5, 12, 28, 0.92);
+  --border:   #0d2137;
+  --accent:   #00ffe7;
+  --accent2:  #ff2d6b;
+  --accent3:  #ffc300;
+  --dim:      #2a4060;
+  --text:     #a0c4e0;
+
+  --c-face:   #00ffe7;
+  --c-eye:    #00cfff;
+  --c-lip:    #ff2d6b;
+  --c-spine:  #e8f4ff;
+  --c-chest:  #ffc300;
+  --c-belly:  #ff8c00;
+  --c-larm:   #b388ff;
+  --c-rarm:   #40c4ff;
+  --c-lhand:  #b388ff;
+  --c-rhand:  #40c4ff;
+  --c-thigh:  #ff2d6b;
+  --c-shin:   #ff6e40;
+  --c-foot:   #69ff47;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Rajdhani',sans-serif;
+  height:100vh;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* Noise grain overlay */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:9998;opacity:0.4;
+}
+
+/* Scanlines */
+body::after{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,231,0.012) 3px,rgba(0,255,231,0.012) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ══════════════════════════════════════
+   PERMISSION SCREEN
+══════════════════════════════════════ */
+#permScreen{
+  position:fixed;inset:0;z-index:500;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);
+}
+
+.perm-wrap{
+  width:480px;padding:0;
+  position:relative;
+}
+
+.perm-glow{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:600px;height:600px;
+  background:radial-gradient(ellipse,rgba(0,255,231,0.06) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+.perm-box{
+  position:relative;
+  background:var(--panel);
+  border:1px solid #0d3050;
+  padding:2.5rem 2.5rem 2rem;
+  clip-path:polygon(0 0,calc(100% - 32px) 0,100% 32px,100% 100%,32px 100%,0 calc(100% - 32px));
+}
+
+.perm-box::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+}
+
+.brand-tag{
+  font-family:'Orbitron',monospace;
+  font-size:0.6rem;letter-spacing:0.5em;
+  color:var(--accent);opacity:0.6;
+  margin-bottom:1.8rem;
+  display:flex;align-items:center;gap:0.75rem;
+}
+.brand-tag::before,.brand-tag::after{content:'';flex:1;height:1px;background:var(--dim)}
+
+.perm-scan-ring{
+  width:100px;height:100px;
+  margin:0 auto 1.5rem;
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+}
+
+.ring{
+  position:absolute;border-radius:50%;border:1px solid;
+}
+.ring1{
+  width:100px;height:100px;
+  border-color:rgba(0,255,231,0.3);
+  animation:spinRing 4s linear infinite;
+}
+.ring2{
+  width:72px;height:72px;
+  border-color:rgba(0,255,231,0.15);
+  animation:spinRing 3s linear infinite reverse;
+}
+.ring3{
+  width:48px;height:48px;
+  border-color:rgba(0,255,231,0.4);
+  animation:pulseRing 2s ease-in-out infinite;
+}
+
+@keyframes spinRing{to{transform:rotate(360deg)}}
+@keyframes pulseRing{
+  0%,100%{transform:scale(1);opacity:0.4}
+  50%{transform:scale(1.08);opacity:1}
+}
+
+.ring-icon{
+  width:28px;height:28px;
+  position:relative;z-index:2;
+  color:var(--accent);
+}
+
+.perm-title{
+  font-family:'Orbitron',monospace;
+  font-size:1.6rem;font-weight:900;
+  text-align:center;margin-bottom:0.4rem;
+  background:linear-gradient(135deg,#ffffff 0%,var(--accent) 60%,#00a88f 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  line-height:1.15;
+}
+
+.perm-version{
+  text-align:center;
+  font-family:'Orbitron',monospace;
+  font-size:0.6rem;letter-spacing:0.3em;
+  color:var(--accent3);margin-bottom:1.4rem;
+}
+
+.perm-desc{
+  text-align:center;font-size:0.85rem;
+  color:var(--dim);line-height:1.6;
+  margin-bottom:1.8rem;
+  font-family:'Rajdhani',sans-serif;
+  letter-spacing:0.05em;
+}
+
+.feat-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:0.5rem;margin-bottom:2rem;
+}
+
+.feat{
+  display:flex;align-items:center;gap:0.5rem;
+  padding:0.5rem 0.6rem;
+  background:rgba(0,255,231,0.03);
+  border:1px solid rgba(0,255,231,0.07);
+  font-size:0.75rem;letter-spacing:0.05em;
+  color:var(--text);
+}
+
+.feat-pip{
+  width:6px;height:6px;border-radius:50%;flex-shrink:0;
+}
+
+.model-badge{
+  text-align:center;
+  font-size:0.65rem;letter-spacing:0.1em;
+  color:var(--dim);margin-bottom:1.5rem;
+  padding:0.4rem;border:1px solid var(--border);
+  font-family:'Orbitron',monospace;
+}
+
+.model-badge span{color:var(--accent);font-weight:700}
+
+.btn-cam{
+  width:100%;padding:1rem;
+  background:transparent;
+  border:1px solid var(--accent);
+  color:var(--accent);
+  font-family:'Orbitron',monospace;
+  font-size:0.75rem;font-weight:700;
+  letter-spacing:0.25em;text-transform:uppercase;
+  cursor:pointer;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+  position:relative;overflow:hidden;
+  transition:all 0.25s;
+}
+.btn-cam::before{
+  content:'';position:absolute;inset:0;
+  background:var(--accent);
+  transform:scaleX(0);transform-origin:left;
+  transition:transform 0.3s ease;z-index:-1;
+}
+.btn-cam:hover{color:#010409}
+.btn-cam:hover::before{transform:scaleX(1)}
+.btn-cam:hover{box-shadow:0 0 30px rgba(0,255,231,0.4)}
+
+/* ══════════════════════════════════════
+   LOADING SCREEN
+══════════════════════════════════════ */
+#loadScreen{
+  position:fixed;inset:0;z-index:400;
+  display:none;align-items:center;justify-content:center;
+  background:var(--bg);flex-direction:column;gap:1.2rem;
+}
+
+.load-title{
+  font-family:'Orbitron',monospace;
+  font-size:0.65rem;letter-spacing:0.5em;
+  color:var(--accent);text-transform:uppercase;
+}
+
+.load-bar-outer{
+  width:320px;height:3px;
+  background:rgba(0,255,231,0.08);
+  position:relative;overflow:visible;
+}
+.load-bar-inner{
+  height:100%;width:0%;
+  background:var(--accent);
+  transition:width 0.4s cubic-bezier(0.4,0,0.2,1);
+  position:relative;
+  box-shadow:0 0 16px var(--accent),0 0 32px rgba(0,255,231,0.4);
+}
+.load-bar-inner::after{
+  content:'';position:absolute;right:-1px;top:-4px;
+  width:2px;height:11px;
+  background:#fff;
+  box-shadow:0 0 8px var(--accent);
+}
+
+.load-pct{
+  font-family:'Orbitron',monospace;
+  font-size:1.8rem;font-weight:900;
+  color:var(--accent);letter-spacing:-0.02em;
+}
+
+.load-msg{
+  font-size:0.7rem;letter-spacing:0.2em;
+  color:var(--dim);text-transform:uppercase;
+  font-family:'Rajdhani',sans-serif;
+}
+
+.load-dots span{
+  display:inline-block;
+  animation:dotPulse 1.2s ease-in-out infinite;
+  color:var(--accent);
+}
+.load-dots span:nth-child(2){animation-delay:0.2s}
+.load-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes dotPulse{0%,80%,100%{opacity:0.2}40%{opacity:1}}
+
+/* ══════════════════════════════════════
+   TRACKER UI
+══════════════════════════════════════ */
+#trackerUI{
+  display:none;
+  position:fixed;inset:0;
+}
+
+#videoEl{
+  position:absolute;inset:0;
+  width:100%;height:100%;
+  object-fit:cover;
+  transform:scaleX(-1);
+  transition:opacity 0.3s ease;
+}
+
+#mainCanvas{
+  position:absolute;inset:0;
+  width:100%;height:100%;
+  transform:scaleX(-1);
+}
+
+/* Header */
+.hdr{
+  position:absolute;top:0;left:0;right:0;z-index:20;
+  padding:0.8rem 1.4rem;
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(180deg,rgba(1,4,9,0.95) 0%,transparent 100%);
+  border-bottom:1px solid rgba(0,255,231,0.06);
+}
+
+.hdr-left{
+  display:flex;flex-direction:column;
+}
+
+.hdr-name{
+  font-family:'Orbitron',monospace;
+  font-size:1rem;font-weight:900;
+  color:#fff;letter-spacing:0.1em;
+}
+
+.hdr-name span{color:var(--accent)}
+
+.hdr-ver{
+  font-family:'Orbitron',monospace;
+  font-size:0.5rem;letter-spacing:0.4em;
+  color:var(--accent3);margin-top:0.1rem;
+}
+
+.hdr-center{
+  display:flex;align-items:center;gap:0.5rem;
+  font-family:'Orbitron',monospace;font-size:0.6rem;
+  letter-spacing:0.2em;color:var(--accent);
+}
+
+.live-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent);
+  animation:liveBlink 1.4s ease-in-out infinite;
+}
+@keyframes liveBlink{0%,100%{opacity:1;box-shadow:0 0 8px var(--accent)}50%{opacity:0.3;box-shadow:none}}
+
+.hdr-right{
+  font-family:'Orbitron',monospace;
+  font-size:0.6rem;color:var(--dim);
+  letter-spacing:0.15em;
+}
+
+/* Corner brackets */
+.bracket{
+  position:absolute;z-index:15;
+  width:28px;height:28px;
+  border-color:var(--accent);
+  border-style:solid;
+  opacity:0.4;
+}
+.bracket.tl{top:54px;left:12px;border-width:2px 0 0 2px}
+.bracket.tr{top:54px;right:12px;border-width:2px 2px 0 0}
+.bracket.bl{bottom:12px;left:12px;border-width:0 0 2px 2px}
+.bracket.br{bottom:12px;right:12px;border-width:0 2px 2px 0}
+
+/* Stats panel */
+.panel{
+  position:absolute;z-index:20;
+  background:var(--panel);
+  border:1px solid #0d2137;
+  padding:0.9rem 1rem;
+  backdrop-filter:blur(8px);
+}
+
+#statsPanel{
+  top:62px;right:14px;
+  min-width:170px;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);
+}
+
+.panel-title{
+  font-family:'Orbitron',monospace;
+  font-size:0.5rem;letter-spacing:0.35em;
+  color:var(--dim);text-transform:uppercase;
+  margin-bottom:0.75rem;
+  padding-bottom:0.5rem;
+  border-bottom:1px solid var(--border);
+}
+
+.stat-row{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:0.45rem;
+  font-size:0.72rem;
+}
+.stat-row:last-child{margin-bottom:0}
+.stat-label{color:var(--dim);letter-spacing:0.05em;font-family:'Rajdhani',sans-serif}
+.stat-val{
+  font-family:'Orbitron',monospace;font-size:0.65rem;font-weight:700;
+  color:var(--accent);
+}
+
+.confidence-bar{
+  margin-top:0.8rem;padding-top:0.6rem;border-top:1px solid var(--border);
+}
+.conf-label{
+  font-size:0.55rem;letter-spacing:0.2em;color:var(--dim);
+  font-family:'Orbitron',monospace;margin-bottom:0.3rem;
+}
+.conf-row{
+  display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;
+}
+.conf-name{font-size:0.6rem;color:var(--dim);width:40px;font-family:'Rajdhani',sans-serif}
+.conf-track{flex:1;height:2px;background:var(--border);border-radius:1px;overflow:hidden}
+.conf-fill{height:100%;border-radius:1px;transition:width 0.3s ease}
+
+/* FPS */
+#fpsPanel{
+  top:62px;left:14px;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);
+}
+
+.fps-big{
+  font-family:'Orbitron',monospace;
+  font-size:1.8rem;font-weight:900;
+  color:var(--accent);line-height:1;
+  text-shadow:0 0 20px rgba(0,255,231,0.5);
+}
+.fps-label{
+  font-size:0.55rem;letter-spacing:0.3em;color:var(--dim);
+  font-family:'Orbitron',monospace;
+}
+
+/* Legend */
+#legend{
+  bottom:14px;left:14px;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%);
+  padding:0.7rem 0.9rem;
+}
+
+.leg-title{
+  font-family:'Orbitron',monospace;font-size:0.45rem;
+  letter-spacing:0.3em;color:var(--dim);margin-bottom:0.6rem;
+  text-transform:uppercase;
+}
+
+.leg-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:0.3rem 1rem;
+}
+
+.leg-item{
+  display:flex;align-items:center;gap:0.45rem;
+  font-size:0.65rem;letter-spacing:0.05em;color:var(--dim);
+  font-family:'Rajdhani',sans-serif;
+}
+
+.leg-pip{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* Model info */
+#modelBadge{
+  position:absolute;bottom:14px;right:14px;z-index:20;
+  background:var(--panel);border:1px solid var(--border);
+  padding:0.4rem 0.7rem;
+  font-family:'Orbitron',monospace;font-size:0.45rem;
+  letter-spacing:0.2em;color:var(--dim);
+  text-align:right;
+  backdrop-filter:blur(8px);
+}
+#modelBadge span{color:var(--accent3)}
+
+/* Toggle buttons */
+#togglePanel{
+  position:absolute;top:62px;left:14px;
+  margin-top:80px;
+  z-index:20;
+  display:flex;flex-direction:column;gap:0.4rem;
+  max-height:calc(100vh - 180px);
+  overflow-y:auto;
+  scrollbar-width:none;
+}
+#togglePanel::-webkit-scrollbar{display:none}
+
+.tog-group{ display:flex;flex-direction:column;gap:0; }
+
+.tog{
+  padding:0.35rem 0.7rem;
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--dim);
+  font-family:'Orbitron',monospace;font-size:0.5rem;
+  letter-spacing:0.15em;cursor:pointer;
+  transition:all 0.2s;text-align:left;
+  display:flex;align-items:center;justify-content:space-between;
+  width:140px;
+}
+.tog.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px rgba(0,255,231,0.15)}
+.tog:hover{border-color:rgba(0,255,231,0.4);color:var(--text)}
+.tog-arrow{
+  font-size:0.45rem;opacity:0.5;
+  transition:transform 0.2s;
+  display:inline-block;
+}
+.tog-group.open .tog-arrow{ transform:rotate(90deg); }
+
+.sub-panel{
+  display:none;
+  flex-direction:column;
+  gap:0;
+  border-left:1px solid rgba(0,255,231,0.15);
+  margin-left:8px;
+  padding-left:0;
+  overflow:hidden;
+}
+.tog-group.open .sub-panel{ display:flex; }
+
+.sub-tog{
+  padding:0.28rem 0.6rem 0.28rem 0.9rem;
+  background:rgba(5,12,28,0.7);
+  border:none;
+  border-bottom:1px solid rgba(13,33,55,0.6);
+  color:var(--dim);
+  font-family:'Orbitron',monospace;font-size:0.42rem;
+  letter-spacing:0.12em;cursor:pointer;
+  transition:all 0.15s;text-align:left;
+  width:132px;
+  display:flex;align-items:center;gap:0.4rem;
+}
+.sub-tog:last-child{ border-bottom:none; }
+.sub-tog.on{ color:var(--accent); background:rgba(0,255,231,0.04); }
+.sub-tog:hover{ color:var(--text);background:rgba(0,255,231,0.06); }
+.sub-pip{
+  width:5px;height:5px;border-radius:50%;flex-shrink:0;
+}
+
+.tog-divider{
+  height:1px;background:rgba(0,255,231,0.06);margin:0.2rem 0;
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════
+     PERMISSION SCREEN
+══════════════════════════════ -->
+<div id="permScreen">
+  <div class="perm-glow"></div>
+  <div class="perm-wrap">
+    <div class="perm-box">
+      <div class="brand-tag">AAYAN SYSTEMS</div>
+
+      <div class="perm-scan-ring">
+        <div class="ring ring1"></div>
+        <div class="ring ring2"></div>
+        <div class="ring ring3"></div>
+        <svg class="ring-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </div>
+
+      <div class="perm-title">Aayan Body<br>Tracker</div>
+      <div class="perm-version">VERSION 3.0 — HOLISTIC ENGINE</div>
+
+      <div class="perm-desc">
+        Full-body neural tracking powered by MediaPipe Holistic.<br/>
+        Detects face, hands, chest, belly, legs & toes simultaneously.
+      </div>
+
+      <div class="feat-grid">
+        <div class="feat"><div class="feat-pip" style="background:#00ffe7"></div>468pt Face Mesh</div>
+        <div class="feat"><div class="feat-pip" style="background:#40c4ff"></div>21pt Hand Joints</div>
+        <div class="feat"><div class="feat-pip" style="background:#ffc300"></div>Chest Region</div>
+        <div class="feat"><div class="feat-pip" style="background:#ff8c00"></div>Belly Region</div>
+        <div class="feat"><div class="feat-pip" style="background:#ff2d6b"></div>Thigh + Shin</div>
+        <div class="feat"><div class="feat-pip" style="background:#69ff47"></div>Feet + Toes</div>
+        <div class="feat"><div class="feat-pip" style="background:#b388ff"></div>Full Spine</div>
+        <div class="feat"><div class="feat-pip" style="background:#e8f4ff"></div>Landmark Smooth</div>
+      </div>
+
+      <div class="model-badge">
+        ENGINE: <span>MediaPipe Holistic</span> &nbsp;|&nbsp;
+        SMOOTHING: <span>EMA α=0.65</span> &nbsp;|&nbsp;
+        LANDMARKS: <span>543 pts</span>
+      </div>
+
+      <button class="btn-cam" onclick="startTracking()">
+        ⬡ &nbsp; INITIALISE CAMERA
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     LOADING SCREEN
+══════════════════════════════ -->
+<div id="loadScreen">
+  <div class="load-title">Aayan Body Tracker v3.0</div>
+  <div class="load-pct" id="loadPct">0%</div>
+  <div class="load-bar-outer">
+    <div class="load-bar-inner" id="loadBar"></div>
+  </div>
+  <div class="load-msg" id="loadMsg">Initialising holistic model</div>
+  <div class="load-dots"><span>◆</span><span>◆</span><span>◆</span></div>
+</div>
+
+<!-- ══════════════════════════════
+     TRACKER UI
+══════════════════════════════ -->
+<div id="trackerUI">
+  <video id="videoEl" autoplay muted playsinline></video>
+  <canvas id="mainCanvas"></canvas>
+
+  <!-- Header -->
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="hdr-name"><span>Aayan</span> Body Tracker</div>
+      <div class="hdr-ver">VERSION 3.0 — HOLISTIC ENGINE</div>
+    </div>
+    <div class="hdr-center">
+      <div class="live-dot"></div>
+      LIVE TRACKING ACTIVE
+    </div>
+    <div class="hdr-right" id="timeDisplay">--:--:--</div>
+  </div>
+
+  <!-- Corners -->
+  <div class="bracket tl"></div>
+  <div class="bracket tr"></div>
+  <div class="bracket bl"></div>
+  <div class="bracket br"></div>
+
+  <!-- FPS Panel -->
+  <div class="panel" id="fpsPanel">
+    <div class="fps-big" id="fpsVal">--</div>
+    <div class="fps-label">FPS</div>
+  </div>
+
+  <!-- Toggle panel with expandable groups -->
+  <div id="togglePanel">
+
+    <!-- FACE group -->
+    <div class="tog-group" id="grpFace">
+      <button class="tog on" id="togFace" onclick="toggleGroup('face')">
+        <span>◈ FACE</span><span class="tog-arrow">▶</span>
+      </button>
+      <div class="sub-panel">
+        <button class="sub-tog on" id="togFaceMesh"      onclick="toggleSub('faceMesh')">
+          <span class="sub-pip" style="background:#00ffe7"></span>MESH DOTS
+        </button>
+        <button class="sub-tog on" id="togFaceContour"   onclick="toggleSub('faceContour')">
+          <span class="sub-pip" style="background:#00ffe7"></span>FACE OUTLINE
+        </button>
+        <button class="sub-tog on" id="togFaceEyes"      onclick="toggleSub('faceEyes')">
+          <span class="sub-pip" style="background:#00cfff"></span>EYES + IRIS
+        </button>
+        <button class="sub-tog on" id="togFaceBrows"     onclick="toggleSub('faceBrows')">
+          <span class="sub-pip" style="background:#00ffe7"></span>EYEBROWS
+        </button>
+        <button class="sub-tog on" id="togFaceNose"      onclick="toggleSub('faceNose')">
+          <span class="sub-pip" style="background:#00ffe7"></span>NOSE
+        </button>
+        <button class="sub-tog on" id="togFaceLips"      onclick="toggleSub('faceLips')">
+          <span class="sub-pip" style="background:#ff2d6b"></span>LIPS
+        </button>
+        <button class="sub-tog on" id="togFaceCheeks"    onclick="toggleSub('faceCheeks')">
+          <span class="sub-pip" style="background:#00ffe7"></span>CHEEKS
+        </button>
+      </div>
+    </div>
+
+    <!-- HANDS group -->
+    <div class="tog-group" id="grpHands">
+      <button class="tog on" id="togHands" onclick="toggleGroup('hands')">
+        <span>◈ HANDS</span><span class="tog-arrow">▶</span>
+      </button>
+      <div class="sub-panel">
+        <button class="sub-tog on" id="togHandLeft"  onclick="toggleSub('handLeft')">
+          <span class="sub-pip" style="background:#b388ff"></span>LEFT HAND
+        </button>
+        <button class="sub-tog on" id="togHandRight" onclick="toggleSub('handRight')">
+          <span class="sub-pip" style="background:#40c4ff"></span>RIGHT HAND
+        </button>
+      </div>
+    </div>
+
+    <!-- BODY group -->
+    <div class="tog-group" id="grpBody">
+      <button class="tog on" id="togBody" onclick="toggleGroup('body')">
+        <span>◈ BODY</span><span class="tog-arrow">▶</span>
+      </button>
+      <div class="sub-panel">
+        <button class="sub-tog on" id="togBodyChest"  onclick="toggleSub('bodyChest')">
+          <span class="sub-pip" style="background:#ffc300"></span>CHEST
+        </button>
+        <button class="sub-tog on" id="togBodyBelly"  onclick="toggleSub('bodyBelly')">
+          <span class="sub-pip" style="background:#ff8c00"></span>BELLY
+        </button>
+        <button class="sub-tog on" id="togBodyArms"   onclick="toggleSub('bodyArms')">
+          <span class="sub-pip" style="background:#b388ff"></span>ARMS
+        </button>
+        <button class="sub-tog on" id="togBodyLegs"   onclick="toggleSub('bodyLegs')">
+          <span class="sub-pip" style="background:#ff2d6b"></span>LEGS
+        </button>
+        <button class="sub-tog on" id="togBodyFeet"   onclick="toggleSub('bodyFeet')">
+          <span class="sub-pip" style="background:#69ff47"></span>FEET + TOES
+        </button>
+      </div>
+    </div>
+
+    <div class="tog-divider"></div>
+
+    <button class="tog on" id="togGlow"   onclick="toggleFlat('glow')">
+      <span>◈ GLOW</span>
+    </button>
+    <button class="tog on" id="togLabels" onclick="toggleFlat('labels')">
+      <span>◈ LABELS</span>
+    </button>
+    <button class="tog on" id="togCamera" onclick="toggleFlat('camera')">
+      <span>◈ CAMERA</span>
+    </button>
+
+  </div>
+
+  <!-- Stats Panel -->
+  <div class="panel" id="statsPanel">
+    <div class="panel-title">Tracking Stats</div>
+    <div class="stat-row"><span class="stat-label">Faces</span><span class="stat-val" id="sFaces">0</span></div>
+    <div class="stat-row"><span class="stat-label">L. Hand pts</span><span class="stat-val" id="sLHand">0</span></div>
+    <div class="stat-row"><span class="stat-label">R. Hand pts</span><span class="stat-val" id="sRHand">0</span></div>
+    <div class="stat-row"><span class="stat-label">Pose pts</span><span class="stat-val" id="sPose">0</span></div>
+    <div class="stat-row"><span class="stat-label">Total LM</span><span class="stat-val" id="sTotal">0</span></div>
+
+    <div class="confidence-bar">
+      <div class="conf-label">CONFIDENCE</div>
+      <div class="conf-row">
+        <div class="conf-name">Face</div>
+        <div class="conf-track"><div class="conf-fill" id="cFace" style="background:#00ffe7;width:0%"></div></div>
+      </div>
+      <div class="conf-row">
+        <div class="conf-name">Pose</div>
+        <div class="conf-track"><div class="conf-fill" id="cPose" style="background:#ffc300;width:0%"></div></div>
+      </div>
+      <div class="conf-row">
+        <div class="conf-name">Hands</div>
+        <div class="conf-track"><div class="conf-fill" id="cHands" style="background:#40c4ff;width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="panel" id="legend">
+    <div class="leg-title">Region Map</div>
+    <div class="leg-grid">
+      <div class="leg-item"><div class="leg-pip" style="background:#00ffe7"></div>Face mesh</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#00cfff"></div>Eyes</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff2d6b"></div>Lips</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#b388ff"></div>Left hand</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#40c4ff"></div>Right hand</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ffc300"></div>Chest</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff8c00"></div>Belly</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff2d6b"></div>Thighs</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff6e40"></div>Shins</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#69ff47"></div>Feet+Toes</div>
+    </div>
+  </div>
+
+  <!-- Model badge -->
+  <div id="modelBadge">
+    <span>MediaPipe Holistic</span> ENGINE<br/>
+    AAYAN SYSTEMS © 2026
+  </div>
+</div>
+
+<!-- MediaPipe CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+
+<script>
+// ═══════════════════════════════════════════════
+// AAYAN BODY TRACKER v3.0 — HOLISTIC ENGINE
+// ═══════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+const video  = $('videoEl');
+const canvas = $('mainCanvas');
+const ctx    = canvas.getContext('2d');
+
+// ── Feature toggles ───────────────────────────
+const SHOW = {
+  // parent groups
+  face:true, hands:true, body:true,
+  // flat
+  glow:true, labels:true, camera:true,
+  // face sub-items
+  faceMesh:true, faceContour:true, faceEyes:true,
+  faceBrows:true, faceNose:true, faceLips:true, faceCheeks:true,
+  // hand sub-items
+  handLeft:true, handRight:true,
+  // body sub-items
+  bodyChest:true, bodyBelly:true, bodyArms:true, bodyLegs:true, bodyFeet:true,
+};
+
+// Toggle a group parent button → expand/collapse sub-panel
+function toggleGroup(grp){
+  const groupEl = $('grp' + grp.charAt(0).toUpperCase() + grp.slice(1));
+  if(!groupEl) return;
+  const isOpen = groupEl.classList.toggle('open');
+  // Also toggle the group on/off when collapsing? No — expand only.
+  // Parent on/off is handled by double-clicking or we just leave group always-on.
+  // Actually: single click = expand. The parent stays "on" always.
+  // If you want to turn off all face, uncheck each sub-item.
+  const btn = $('tog' + grp.charAt(0).toUpperCase() + grp.slice(1));
+  if(btn) btn.classList.toggle('on', true); // always keep parent lit
+}
+
+// Toggle a sub-item
+function toggleSub(k){
+  SHOW[k] = !SHOW[k];
+  const id = 'tog' + k.charAt(0).toUpperCase() + k.slice(1);
+  const btn = $(id);
+  if(btn) btn.classList.toggle('on', SHOW[k]);
+}
+
+// Toggle a flat button (glow, labels, camera)
+function toggleFlat(k){
+  SHOW[k] = !SHOW[k];
+  const id = 'tog' + k.charAt(0).toUpperCase() + k.slice(1);
+  const btn = $(id);
+  if(btn) btn.classList.toggle('on', SHOW[k]);
+  if(k === 'camera'){
+    video.style.opacity = SHOW.camera ? '1' : '0';
+  }
+}
+
+// Legacy: keep old toggle() working for glow/labels
+function toggle(k){ toggleFlat(k); }
+
+// ── Colors ────────────────────────────────────
+const C = {
+  face   : '#00ffe7', eye : '#00cfff', lip : '#ff2d6b',
+  lhand  : '#b388ff', rhand : '#40c4ff',
+  chest  : '#ffc300', belly : '#ff8c00',
+  lthigh : '#ff2d6b', rthigh: '#ff2d6b',
+  lshin  : '#ff6e40', rshin : '#ff6e40',
+  lfoot  : '#69ff47', rfoot : '#69ff47',
+  spine  : '#e8f4ff',
+  larm   : '#b388ff', rarm  : '#40c4ff',
+  thumb  : '#ffc300', index : '#69ff47',
+  middle : '#40c4ff', ring  : '#ff8c00', pinky: '#ff2d6b',
+};
+
+// ── EMA Landmark Smoother ─────────────────────
+class Smoother {
+  constructor(alpha=0.65){ this.alpha=alpha; this.prev=null; }
+  smooth(lms){
+    if(!lms) return null;
+    const a = this.alpha, b = 1-a;
+    if(!this.prev){ this.prev=[...lms]; return lms; }
+    const out = lms.map((lm,i)=>{
+      const p = this.prev[i];
+      if(!p) return lm;
+      return {
+        x: a*lm.x + b*p.x,
+        y: a*lm.y + b*p.y,
+        z: a*(lm.z||0) + b*(p.z||0),
+        visibility: lm.visibility
+      };
+    });
+    this.prev = out;
+    return out;
+  }
+}
+
+const smoFace  = new Smoother(0.6);
+const smoPose  = new Smoother(0.55);
+const smoLHand = new Smoother(0.65);
+const smoRHand = new Smoother(0.65);
+
+// ── Result store ──────────────────────────────
+let lastResults = null;
+
+// ── FPS ───────────────────────────────────────
+let frameTimes = [];
+function calcFPS(){
+  const now = performance.now();
+  frameTimes.push(now);
+  frameTimes = frameTimes.filter(t => now-t < 1000);
+  return frameTimes.length;
+}
+
+// ── Canvas resize ─────────────────────────────
+function resizeCanvas(){
+  canvas.width  = video.videoWidth  || window.innerWidth;
+  canvas.height = video.videoHeight || window.innerHeight;
+}
+
+// ── Glow helper ───────────────────────────────
+function setGlow(color, blur=12){
+  if(!SHOW.glow){ ctx.shadowBlur=0; return; }
+  ctx.shadowColor = color;
+  ctx.shadowBlur  = blur;
+}
+function clearGlow(){ ctx.shadowBlur=0; }
+
+// ── Coordinate helpers ────────────────────────
+function px(lm){ return [lm.x*canvas.width, lm.y*canvas.height]; }
+function pxI(lms,i){ return px(lms[i]); }
+function vis(lm,thresh=0.25){ return !lm.visibility || lm.visibility > thresh; }
+
+// ── Dot ───────────────────────────────────────
+function dot(x,y,r,color,glow=10){
+  setGlow(color,glow);
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fillStyle=color; ctx.fill();
+  clearGlow();
+}
+
+// ── Line ──────────────────────────────────────
+function line(ax,ay,bx,by,color,w=2,glow=8){
+  setGlow(color,glow);
+  ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by);
+  ctx.strokeStyle=color; ctx.lineWidth=w; ctx.stroke();
+  clearGlow();
+}
+
+// ── Filled poly ───────────────────────────────
+function poly(pts,fill,alpha=0.2,stroke=null){
+  if(pts.length<3) return;
+  ctx.save();
+  ctx.globalAlpha=alpha;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle=fill; ctx.fill();
+  if(stroke){
+    ctx.globalAlpha=Math.min(1,alpha*2.5);
+    ctx.strokeStyle=stroke; ctx.lineWidth=1.5; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── Label ─────────────────────────────────────
+function label(x,y,text,color){
+  if(!SHOW.labels) return;
+  ctx.save();
+  ctx.font='bold 10px Rajdhani,sans-serif';
+  ctx.fillStyle='rgba(1,4,9,0.7)';
+  const w=ctx.measureText(text).width;
+  ctx.fillRect(x+5,y-13,w+6,16);
+  ctx.fillStyle=color; ctx.fillText(text,x+8,y-1);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+// FACE DRAWING
+// ═══════════════════════════════════════════════
+const FACE_CONTOUR=[10,338,297,332,284,251,389,356,454,323,361,288,
+  397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
+
+const LEFT_EYE  =[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246,33];
+const RIGHT_EYE =[362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398,362];
+const LIP_OUT   =[61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146,61];
+const LIP_IN    =[78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95,78];
+
+// Iris landmark indices (available when refineFaceLandmarks: true)
+// Left iris: 468=center, 469=top, 470=right, 471=bottom, 472=left
+// Right iris: 473=center, 474=top, 475=right, 476=bottom, 477=left
+const LEFT_IRIS_CENTER  = 468;
+const RIGHT_IRIS_CENTER = 473;
+const LEFT_IRIS_RING    = [469,470,471,472];
+const RIGHT_IRIS_RING   = [474,475,476,477];
+
+// Eyebrows — traced as closed outline: lower-inner → lower → lower-outer → upper-outer → upper → upper-inner → close
+// This winding order prevents crossed/jagged lines
+const LEFT_EYEBROW  = [46,53,52,65,55,107,66,105,63,70,46];
+const RIGHT_EYEBROW = [276,283,282,295,285,336,296,334,293,300,276];
+
+// Nose bridge + nostrils
+const NOSE_BRIDGE = [168,6,197,195,5,4];
+const NOSE_BOTTOM = [4,5,195,197,6,168,122,188,114,217,126,142,97,2,326,371,399,437,343,412,399];
+
+// Forehead region: top of face
+const FOREHEAD_IDX=[10,109,67,103,54,21,162,127,234,93,132,58,172];
+// Cheek dots (sparse)
+const CHEEK_L=[234,93,132,58,172,136,150,176,148,152];
+const CHEEK_R=[454,323,361,288,397,365,379,378,400,377];
+
+function drawFaceLandmarks(rawLms){
+  const lms = smoFace.smooth(rawLms);
+  if(!lms) return;
+
+  const W=canvas.width, H=canvas.height;
+
+  // All 468 micro dots
+  if(SHOW.faceMesh){
+    ctx.save();
+    for(const lm of lms){
+      const x=lm.x*W, y=lm.y*H;
+      ctx.beginPath(); ctx.arc(x,y,0.9,0,Math.PI*2);
+      ctx.fillStyle = C.face+'88'; ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Outer face contour
+  if(SHOW.faceContour){
+    ctx.save(); setGlow(C.face,10);
+    ctx.beginPath(); ctx.strokeStyle=C.face+'cc'; ctx.lineWidth=1.5;
+    for(let i=0;i<FACE_CONTOUR.length;i++){
+      const lm=lms[FACE_CONTOUR[i]];
+      i===0?ctx.moveTo(lm.x*W,lm.y*H):ctx.lineTo(lm.x*W,lm.y*H);
+    }
+    ctx.stroke(); clearGlow(); ctx.restore();
+  }
+
+  // Eyebrows — filled arch shape with glowing outline
+  if(SHOW.faceBrows) for(const brow of [LEFT_EYEBROW, RIGHT_EYEBROW]){
+    const pts = brow.map(i=>lms[i]).filter(Boolean).map(lm=>[lm.x*W, lm.y*H]);
+    if(pts.length < 4) continue;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = C.face+'33';
+    ctx.fill();
+    setGlow(C.face, 10);
+    ctx.strokeStyle = C.face+'cc'; ctx.lineWidth=1.6;
+    ctx.stroke();
+    clearGlow(); ctx.restore();
+  }
+
+  // Eyes — eyelid contours + iris (guarded by SHOW.faceEyes)
+  if(SHOW.faceEyes){
+    for(const eye of [LEFT_EYE, RIGHT_EYE]){
+      ctx.save(); setGlow(C.eye,14);
+      ctx.beginPath(); ctx.strokeStyle=C.eye; ctx.lineWidth=1.5;
+      for(let i=0;i<eye.length;i++){
+        const lm=lms[eye[i]];
+        if(!lm) continue;
+        i===0?ctx.moveTo(lm.x*W,lm.y*H):ctx.lineTo(lm.x*W,lm.y*H);
+      }
+      ctx.stroke(); clearGlow(); ctx.restore();
+    }
+    // Left iris
+    const leftIrisC = lms[LEFT_IRIS_CENTER];
+    if(leftIrisC){
+      const irisRingL = LEFT_IRIS_RING.map(i=>lms[i]).filter(Boolean);
+      if(irisRingL.length===4){
+        const dx = irisRingL[0].x*W - leftIrisC.x*W;
+        const dy = irisRingL[0].y*H - leftIrisC.y*H;
+        const irisR = Math.sqrt(dx*dx+dy*dy);
+        ctx.save(); setGlow(C.eye,18);
+        ctx.beginPath();
+        ctx.arc(leftIrisC.x*W, leftIrisC.y*H, irisR, 0, Math.PI*2);
+        ctx.strokeStyle=C.eye+'cc'; ctx.lineWidth=1.5; ctx.stroke();
+        clearGlow(); ctx.restore();
+      }
+      dot(leftIrisC.x*W, leftIrisC.y*H, 3.5, C.eye, 20);
+    }
+    // Right iris
+    const rightIrisC = lms[RIGHT_IRIS_CENTER];
+    if(rightIrisC){
+      const irisRingR = RIGHT_IRIS_RING.map(i=>lms[i]).filter(Boolean);
+      if(irisRingR.length===4){
+        const dx = irisRingR[0].x*W - rightIrisC.x*W;
+        const dy = irisRingR[0].y*H - rightIrisC.y*H;
+        const irisR = Math.sqrt(dx*dx+dy*dy);
+        ctx.save(); setGlow(C.eye,18);
+        ctx.beginPath();
+        ctx.arc(rightIrisC.x*W, rightIrisC.y*H, irisR, 0, Math.PI*2);
+        ctx.strokeStyle=C.eye+'cc'; ctx.lineWidth=1.5; ctx.stroke();
+        clearGlow(); ctx.restore();
+      }
+      dot(rightIrisC.x*W, rightIrisC.y*H, 3.5, C.eye, 20);
+    }
+  }
+
+  // Nose bridge
+  if(SHOW.faceNose){
+    ctx.save(); setGlow(C.face, 8);
+    ctx.beginPath(); ctx.strokeStyle=C.face+'66'; ctx.lineWidth=1;
+    for(let i=0;i<NOSE_BRIDGE.length;i++){
+      const lm=lms[NOSE_BRIDGE[i]];
+      if(!lm) continue;
+      i===0?ctx.moveTo(lm.x*W,lm.y*H):ctx.lineTo(lm.x*W,lm.y*H);
+    }
+    ctx.stroke(); clearGlow(); ctx.restore();
+  }
+
+  // Lips
+  if(SHOW.faceLips){
+    for(const lip of [LIP_OUT,LIP_IN]){
+      ctx.save(); setGlow(C.lip,10);
+      ctx.beginPath(); ctx.strokeStyle=C.lip+'dd'; ctx.lineWidth=1.2;
+      for(let i=0;i<lip.length;i++){
+        const lm=lms[lip[i]];
+        if(!lm) continue;
+        i===0?ctx.moveTo(lm.x*W,lm.y*H):ctx.lineTo(lm.x*W,lm.y*H);
+      }
+      ctx.stroke(); clearGlow(); ctx.restore();
+    }
+  }
+
+  // Nose tip dot
+  if(SHOW.faceNose) dot(lms[1].x*W,lms[1].y*H,3,C.face,14);
+
+  // Cheek region dots (sparse glow)
+  if(SHOW.faceCheeks){
+    for(const idx of [...CHEEK_L,...CHEEK_R]){
+      const lm=lms[idx];
+      dot(lm.x*W,lm.y*H,1.5,C.face+'55',0);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════
+// HAND DRAWING
+// ═══════════════════════════════════════════════
+const FINGER_GROUPS={
+  thumb :[1,2,3,4],  index :[5,6,7,8],
+  middle:[9,10,11,12], ring:[13,14,15,16], pinky:[17,18,19,20]
+};
+const FINGER_COLORS={
+  thumb:C.thumb, index:C.index, middle:C.middle, ring:C.ring, pinky:C.pinky
+};
+const PALM_IDX=[0,1,5,9,13,17];
+
+function drawHandLandmarks(rawLms, side){
+  const lms = (side==='Left'?smoLHand:smoRHand).smooth(rawLms);
+  if(!lms) return;
+  const W=canvas.width,H=canvas.height;
+  const base = side==='Left' ? C.lhand : C.rhand;
+
+  // Palm fill
+  const palmPts=PALM_IDX.map(i=>[lms[i].x*W,lms[i].y*H]);
+  poly(palmPts, base, 0.12, base);
+
+  // Each finger
+  for(const [fname,joints] of Object.entries(FINGER_GROUPS)){
+    const fc=FINGER_COLORS[fname];
+    // Wrist to MCP
+    line(lms[0].x*W,lms[0].y*H,lms[joints[0]].x*W,lms[joints[0]].y*H,fc,1.5,6);
+    for(let i=0;i<joints.length-1;i++){
+      const a=lms[joints[i]], b=lms[joints[i+1]];
+      line(a.x*W,a.y*H,b.x*W,b.y*H,fc,2,10);
+    }
+    joints.forEach((j,k)=>{
+      const lm=lms[j];
+      const isTip=(k===joints.length-1);
+      dot(lm.x*W,lm.y*H,isTip?5:3,fc,isTip?14:8);
+    });
+  }
+
+  // Wrist
+  dot(lms[0].x*W,lms[0].y*H,6,base,16);
+
+  // Palm connections
+  [[1,5],[5,9],[9,13],[13,17]].forEach(([a,b])=>{
+    line(lms[a].x*W,lms[a].y*H,lms[b].x*W,lms[b].y*H,base+'66',1,0);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// POSE / BODY DRAWING
+// ═══════════════════════════════════════════════
+// Holistic pose landmark indices (same as Pose 33 pts)
+const PL={
+  NOSE:0,
+  L_EAR:7,  R_EAR:8,
+  L_SHOULDER:11, R_SHOULDER:12,
+  L_ELBOW:13,    R_ELBOW:14,
+  L_WRIST:15,    R_WRIST:16,
+  L_PINKY:17,    R_PINKY:18,
+  L_INDEX:19,    R_INDEX:20,
+  L_THUMB:21,    R_THUMB:22,
+  L_HIP:23,      R_HIP:24,
+  L_KNEE:25,     R_KNEE:26,
+  L_ANKLE:27,    R_ANKLE:28,
+  L_HEEL:29,     R_HEEL:30,
+  L_FOOT:31,     R_FOOT:32,
+};
+
+function pv(lms,idx,thresh=0.25){
+  const lm=lms[idx];
+  return lm && (!lm.visibility||lm.visibility>thresh);
+}
+
+function posePx(lms,idx){
+  const lm=lms[idx];
+  return [lm.x*canvas.width, lm.y*canvas.height];
+}
+
+function bone(lms,a,b,color,w=2.5,glow=10){
+  if(!pv(lms,a)||!pv(lms,b)) return;
+  const [ax,ay]=posePx(lms,a), [bx,by]=posePx(lms,b);
+  line(ax,ay,bx,by,color,w,glow);
+}
+
+function joint(lms,idx,color,r=6){
+  if(!pv(lms,idx)) return;
+  const [x,y]=posePx(lms,idx);
+  dot(x,y,r,color,14);
+}
+
+function poseLabel(lms,idx,text,color){
+  if(!pv(lms,idx)) return;
+  const [x,y]=posePx(lms,idx);
+  label(x,y,text,color);
+}
+
+function posePolyRegion(lms,indices,fill,alpha=0.28){
+  const pts=[];
+  for(const i of indices){
+    if(!pv(lms,i)) return;
+    pts.push(posePx(lms,i));
+  }
+  poly(pts,fill,alpha,fill);
+}
+
+// ── Foot + estimated 5 toes ───────────────────
+function drawFootDetail(lms, side){
+  const L = side==='left';
+  const aIdx=L?PL.L_ANKLE:PL.R_ANKLE;
+  const hIdx=L?PL.L_HEEL :PL.R_HEEL;
+  const fIdx=L?PL.L_FOOT :PL.R_FOOT;
+  const color=L?C.lfoot:C.rfoot;
+
+  if(!pv(lms,aIdx)||!pv(lms,hIdx)||!pv(lms,fIdx)) return;
+
+  const W=canvas.width,H=canvas.height;
+  const ankle=[lms[aIdx].x*W, lms[aIdx].y*H];
+  const heel =[lms[hIdx].x*W, lms[hIdx].y*H];
+  const foot =[lms[fIdx].x*W, lms[fIdx].y*H];
+
+  // Foot direction
+  const vx=foot[0]-heel[0], vy=foot[1]-heel[1];
+  const len=Math.sqrt(vx*vx+vy*vy)||1;
+  const dir=[vx/len, vy/len];
+  const perp=[-dir[1], dir[0]];
+  const fw=len*0.38;
+
+  const N=5;
+  const tips=[], bases=[];
+  for(let i=0;i<N;i++){
+    const t=(i/(N-1))-0.5;
+    const lf=1.0-0.28*Math.abs(t*2);  // middle toe longest
+    const base=[
+      foot[0]+perp[0]*t*fw*0.65,
+      foot[1]+perp[1]*t*fw*0.65
+    ];
+    const tip=[
+      base[0]+dir[0]*len*0.20*lf + perp[0]*t*fw*0.35,
+      base[1]+dir[1]*len*0.20*lf + perp[1]*t*fw*0.35
+    ];
+    bases.push(base); tips.push(tip);
+
+    // Each toe segment with glow
+    line(base[0],base[1],tip[0],tip[1],color,2,10);
+    dot(tip[0],tip[1],3.5,color,12);
+    dot(base[0],base[1],2,color,6);
+  }
+
+  // Lateral toe connection
+  for(let i=0;i<N-1;i++){
+    line(tips[i][0],tips[i][1],tips[i+1][0],tips[i+1][1],color+'55',1,0);
+    line(bases[i][0],bases[i][1],bases[i+1][0],bases[i+1][1],color+'44',1,0);
+  }
+
+  // Foot outline polygon
+  ctx.save(); setGlow(color,8);
+  ctx.beginPath(); ctx.strokeStyle=color+'88'; ctx.lineWidth=1.5;
+  ctx.moveTo(heel[0],heel[1]);
+  for(const b of bases) ctx.lineTo(b[0],b[1]);
+  ctx.lineTo(ankle[0],ankle[1]);
+  ctx.stroke();
+  clearGlow(); ctx.restore();
+
+  // Foot skeleton bones
+  bone(lms,aIdx,hIdx,color,2,10);
+  bone(lms,hIdx,fIdx,color,2,10);
+  bone(lms,aIdx,fIdx,color,1.5,6);
+
+  joint(lms,aIdx,color,5);
+  joint(lms,hIdx,color,4);
+  joint(lms,fIdx,color,4);
+}
+
+// ── Main body drawing ─────────────────────────
+function drawBody(rawLms){
+  const lms = smoPose.smooth(rawLms);
+  if(!lms) return;
+
+  // ── Filled body regions ─────────────────────
+  if(SHOW.bodyChest){
+    posePolyRegion(lms,[PL.L_SHOULDER,PL.R_SHOULDER,PL.R_HIP,PL.L_HIP], C.chest, 0.22);
+    // Torso frame bones
+    bone(lms,PL.L_SHOULDER,PL.R_SHOULDER, C.spine, 2.5, 10);
+    bone(lms,PL.L_HIP,     PL.R_HIP,      C.spine, 2.5, 10);
+    bone(lms,PL.L_SHOULDER,PL.L_HIP,      C.spine, 2,   8);
+    bone(lms,PL.R_SHOULDER,PL.R_HIP,      C.spine, 2,   8);
+    // Neck
+    if(pv(lms,PL.NOSE)&&pv(lms,PL.L_SHOULDER)&&pv(lms,PL.R_SHOULDER)){
+      const ls=posePx(lms,PL.L_SHOULDER), rs=posePx(lms,PL.R_SHOULDER);
+      const mid=[(ls[0]+rs[0])/2,(ls[1]+rs[1])/2];
+      const nose=posePx(lms,PL.NOSE);
+      line(nose[0],nose[1],mid[0],mid[1],C.spine+'88',2,8);
+    }
+    joint(lms,PL.L_SHOULDER,C.larm,7); joint(lms,PL.R_SHOULDER,C.rarm,7);
+    joint(lms,PL.L_HIP,C.chest,8);     joint(lms,PL.R_HIP,C.chest,8);
+    poseLabel(lms,PL.L_SHOULDER,'L.shoulder',C.larm);
+    poseLabel(lms,PL.R_SHOULDER,'R.shoulder',C.rarm);
+    poseLabel(lms,PL.L_HIP,'L.hip',C.chest);
+    poseLabel(lms,PL.R_HIP,'R.hip',C.chest);
+  }
+
+  if(SHOW.bodyBelly){
+    posePolyRegion(lms,[PL.L_HIP,PL.R_HIP,PL.R_KNEE,PL.L_KNEE], C.belly, 0.18);
+  }
+
+  if(SHOW.bodyArms){
+    bone(lms,PL.L_SHOULDER,PL.L_ELBOW, C.larm,3,12);
+    bone(lms,PL.L_ELBOW,   PL.L_WRIST, C.larm,2.5,10);
+    bone(lms,PL.R_SHOULDER,PL.R_ELBOW, C.rarm,3,12);
+    bone(lms,PL.R_ELBOW,   PL.R_WRIST, C.rarm,2.5,10);
+    bone(lms,PL.L_WRIST,PL.L_PINKY, C.larm,1.5,6);
+    bone(lms,PL.L_WRIST,PL.L_INDEX, C.larm,1.5,6);
+    bone(lms,PL.L_WRIST,PL.L_THUMB, C.thumb,1.5,6);
+    bone(lms,PL.R_WRIST,PL.R_PINKY, C.rarm,1.5,6);
+    bone(lms,PL.R_WRIST,PL.R_INDEX, C.rarm,1.5,6);
+    bone(lms,PL.R_WRIST,PL.R_THUMB, C.thumb,1.5,6);
+    joint(lms,PL.L_ELBOW,C.larm,6); joint(lms,PL.R_ELBOW,C.rarm,6);
+    joint(lms,PL.L_WRIST,C.larm,5); joint(lms,PL.R_WRIST,C.rarm,5);
+    joint(lms,PL.L_PINKY,C.larm,3); joint(lms,PL.R_PINKY,C.rarm,3);
+    joint(lms,PL.L_INDEX,C.index,3); joint(lms,PL.R_INDEX,C.index,3);
+    joint(lms,PL.L_THUMB,C.thumb,3); joint(lms,PL.R_THUMB,C.thumb,3);
+    poseLabel(lms,PL.L_ELBOW,'L.elbow',C.larm);
+    poseLabel(lms,PL.R_ELBOW,'R.elbow',C.rarm);
+  }
+
+  if(SHOW.bodyLegs){
+    posePolyRegion(lms,[PL.L_HIP,PL.L_KNEE,PL.L_ANKLE], C.lthigh, 0.15);
+    posePolyRegion(lms,[PL.R_HIP,PL.R_KNEE,PL.R_ANKLE], C.rthigh, 0.15);
+    posePolyRegion(lms,[PL.L_KNEE,PL.L_ANKLE,PL.L_HEEL], C.lshin, 0.15);
+    posePolyRegion(lms,[PL.R_KNEE,PL.R_ANKLE,PL.R_HEEL], C.rshin, 0.15);
+    bone(lms,PL.L_HIP,   PL.L_KNEE,  C.lthigh,3.5,14);
+    bone(lms,PL.L_KNEE,  PL.L_ANKLE, C.lshin,3,12);
+    bone(lms,PL.R_HIP,   PL.R_KNEE,  C.rthigh,3.5,14);
+    bone(lms,PL.R_KNEE,  PL.R_ANKLE, C.rshin,3,12);
+    joint(lms,PL.L_KNEE,C.lthigh,7); joint(lms,PL.R_KNEE,C.rthigh,7);
+    joint(lms,PL.L_ANKLE,C.lshin,6); joint(lms,PL.R_ANKLE,C.rshin,6);
+    poseLabel(lms,PL.L_KNEE,'L.knee',C.lthigh);
+    poseLabel(lms,PL.R_KNEE,'R.knee',C.rthigh);
+    poseLabel(lms,PL.L_ANKLE,'L.ankle',C.lshin);
+    poseLabel(lms,PL.R_ANKLE,'R.ankle',C.rshin);
+  }
+
+  // Nose joint (always with body since it's a pose point)
+  joint(lms,PL.NOSE,C.face,5);
+  poseLabel(lms,PL.NOSE,'nose',C.face);
+
+  // ── Feet + Toes ─────────────────────────────
+  if(SHOW.bodyFeet){
+    poseLabel(lms,PL.L_HEEL,'L.heel',C.lfoot);
+    poseLabel(lms,PL.R_HEEL,'R.heel',C.rfoot);
+    poseLabel(lms,PL.L_FOOT,'L.foot',C.lfoot);
+    poseLabel(lms,PL.R_FOOT,'R.foot',C.rfoot);
+    drawFootDetail(lms,'left');
+    drawFootDetail(lms,'right');
+  }
+}
+
+// ═══════════════════════════════════════════════
+// RENDER LOOP
+// ═══════════════════════════════════════════════
+function render(){
+  resizeCanvas();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(lastResults){
+    const r = lastResults;
+
+    if(SHOW.body  && r.poseLandmarks)                            drawBody(r.poseLandmarks);
+    if(SHOW.face  && r.faceLandmarks)                            drawFaceLandmarks(r.faceLandmarks);
+    if(SHOW.hands && SHOW.handLeft  && r.leftHandLandmarks)      drawHandLandmarks(r.leftHandLandmarks,'Left');
+    if(SHOW.hands && SHOW.handRight && r.rightHandLandmarks)     drawHandLandmarks(r.rightHandLandmarks,'Right');
+
+    updateStats(r);
+  }
+
+  $('fpsVal').textContent = calcFPS();
+  updateClock();
+  requestAnimationFrame(render);
+}
+
+// ── Stats HUD ─────────────────────────────────
+function updateStats(r){
+  const hasFace  = !!r.faceLandmarks;
+  const hasPose  = !!r.poseLandmarks;
+  const hasLH    = !!r.leftHandLandmarks;
+  const hasRH    = !!r.rightHandLandmarks;
+
+  $('sFaces').textContent  = hasFace ? '1' : '0';
+  $('sLHand').textContent  = hasLH   ? r.leftHandLandmarks.length  : '0';
+  $('sRHand').textContent  = hasRH   ? r.rightHandLandmarks.length : '0';
+  $('sPose').textContent   = hasPose ? r.poseLandmarks.length      : '0';
+
+  const total =
+    (hasFace?r.faceLandmarks.length:0)+
+    (hasLH  ?r.leftHandLandmarks.length:0)+
+    (hasRH  ?r.rightHandLandmarks.length:0)+
+    (hasPose?r.poseLandmarks.length:0);
+  $('sTotal').textContent = total;
+
+  // Confidence bars
+  $('cFace').style.width  = hasFace ? '100%' : '0%';
+  const poseConf = hasPose
+    ? Math.round(r.poseLandmarks.filter(l=>l.visibility>0.5).length/r.poseLandmarks.length*100)
+    : 0;
+  $('cPose').style.width  = poseConf+'%';
+  $('cHands').style.width = ((hasLH?50:0)+(hasRH?50:0))+'%';
+}
+
+function updateClock(){
+  const d=new Date();
+  $('timeDisplay').textContent=
+    d.getHours().toString().padStart(2,'0')+':'+
+    d.getMinutes().toString().padStart(2,'0')+':'+
+    d.getSeconds().toString().padStart(2,'0');
+}
+
+// ═══════════════════════════════════════════════
+// INITIALISE
+// ═══════════════════════════════════════════════
+function setLoad(pct,msg){
+  $('loadBar').style.width=pct+'%';
+  $('loadPct').textContent=pct+'%';
+  $('loadMsg').textContent=msg;
+}
+
+async function startTracking(){
+  $('permScreen').style.display='none';
+  $('loadScreen').style.display='flex';
+
+  // Camera
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{width:1280,height:720,facingMode:'user'},audio:false
+    });
+  }catch(e){
+    alert('Camera access denied:\n'+e.message);
+    $('permScreen').style.display='flex';
+    $('loadScreen').style.display='none';
+    return;
+  }
+
+  video.srcObject=stream;
+  await new Promise(r=>video.onloadedmetadata=r);
+  video.play();
+
+  setLoad(15,'Initialising Holistic model...');
+
+  // ── MediaPipe Holistic ────────────────────────
+  // Single unified model: face + hands + pose in one pass
+  // More accurate than running 3 separate models
+  const holistic=new Holistic({
+    locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
+  });
+
+  holistic.setOptions({
+    modelComplexity       : 1,      // 0=lite, 1=full (best accuracy/speed balance)
+    smoothLandmarks       : true,   // built-in temporal smoothing
+    enableSegmentation    : false,
+    smoothSegmentation    : false,
+    refineFaceLandmarks   : true,   // 468+iris landmarks
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence : 0.5,
+  });
+
+  holistic.onResults(results=>{
+    lastResults = results;
+  });
+
+  setLoad(40,'Loading face mesh weights...');
+  await holistic.initialize();
+  setLoad(80,'Starting camera pipeline...');
+
+  // ── Camera loop ───────────────────────────────
+  const camera=new Camera(video,{
+    onFrame:async()=>{ await holistic.send({image:video}); },
+    width:1280, height:720,
+  });
+
+  await camera.start();
+
+  setLoad(100,'Ready!');
+  await new Promise(r=>setTimeout(r,500));
+
+  $('loadScreen').style.display='none';
+  $('trackerUI').style.display='block';
+  requestAnimationFrame(render);
+}
+
+window.addEventListener('resize',resizeCanvas);
+</script>
+</body>
+</html>
