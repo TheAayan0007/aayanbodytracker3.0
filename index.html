@@ -41,14 +41,12 @@ body{
   display:flex;align-items:center;justify-content:center;
 }
 
-/* Noise grain overlay */
 body::before{
   content:'';position:fixed;inset:0;
   background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
   pointer-events:none;z-index:9998;opacity:0.4;
 }
 
-/* Scanlines */
 body::after{
   content:'';position:fixed;inset:0;
   background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,231,0.012) 3px,rgba(0,255,231,0.012) 4px);
@@ -279,15 +277,19 @@ body::after{
   position:absolute;inset:0;
   width:100%;height:100%;
   object-fit:cover;
-  transform:scaleX(-1);
   transition:opacity 0.3s ease;
 }
+
+/* Mirror only for front camera */
+#videoEl.mirror { transform:scaleX(-1); }
 
 #mainCanvas{
   position:absolute;inset:0;
   width:100%;height:100%;
-  transform:scaleX(-1);
 }
+
+/* Canvas also mirrors for front camera */
+#mainCanvas.mirror { transform:scaleX(-1); }
 
 /* Header */
 .hdr{
@@ -521,6 +523,97 @@ body::after{
 .tog-divider{
   height:1px;background:rgba(0,255,231,0.06);margin:0.2rem 0;
 }
+
+/* ══════════════════════════════════════
+   CAMERA FLIP BUTTON
+══════════════════════════════════════ */
+#flipCamBtn{
+  position:absolute;
+  /* Sits just below the header, right side — easy thumb reach on mobile */
+  top:62px;
+  right:14px;
+  margin-top:calc(0px); /* directly below header */
+  z-index:30;
+
+  /* Push it below statsPanel — statsPanel is top:62px so we offset */
+  /* Actually place it ABOVE statsPanel in a floating pill */
+  width:44px;height:44px;
+  background:var(--panel);
+  border:1px solid var(--accent);
+  color:var(--accent);
+  border-radius:50%;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 16px rgba(0,255,231,0.25);
+  transition:all 0.25s;
+  backdrop-filter:blur(8px);
+
+  /* Reposition so it doesn't overlap statsPanel */
+  top: auto;
+  bottom: 70px;   /* above legend area on right side */
+  right: 14px;
+}
+
+#flipCamBtn:hover,#flipCamBtn:active{
+  background:rgba(0,255,231,0.12);
+  box-shadow:0 0 28px rgba(0,255,231,0.5);
+  transform:scale(1.08);
+}
+
+#flipCamBtn svg{
+  width:22px;height:22px;
+  transition:transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+#flipCamBtn.flipping svg{
+  transform:rotate(180deg);
+}
+
+/* Camera label badge inside flip button */
+#camFacingLabel{
+  position:absolute;
+  bottom:118px;
+  right:14px;
+  z-index:30;
+  background:var(--panel);
+  border:1px solid var(--border);
+  padding:0.2rem 0.5rem;
+  font-family:'Orbitron',monospace;
+  font-size:0.42rem;
+  letter-spacing:0.2em;
+  color:var(--dim);
+  backdrop-filter:blur(8px);
+  pointer-events:none;
+  transition:color 0.3s;
+}
+#camFacingLabel.front{ color:var(--accent); }
+#camFacingLabel.back { color:var(--accent3); }
+
+/* Switching overlay */
+#switchOverlay{
+  position:absolute;inset:0;
+  z-index:25;
+  background:rgba(1,4,9,0.85);
+  display:none;
+  align-items:center;justify-content:center;
+  flex-direction:column;gap:1rem;
+}
+#switchOverlay.active{ display:flex; }
+
+.switch-spinner{
+  width:48px;height:48px;
+  border:2px solid var(--dim);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin 0.7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.switch-text{
+  font-family:'Orbitron',monospace;
+  font-size:0.6rem;letter-spacing:0.3em;
+  color:var(--accent);
+}
 </style>
 </head>
 <body>
@@ -551,7 +644,7 @@ body::after{
 
       <div class="perm-desc">
         Full-body neural tracking powered by MediaPipe Holistic.<br/>
-        Detects face, hands, chest, belly, legs & toes simultaneously.
+        Detects face, hands, chest, belly, legs &amp; toes simultaneously.
       </div>
 
       <div class="feat-grid">
@@ -595,8 +688,8 @@ body::after{
      TRACKER UI
 ══════════════════════════════ -->
 <div id="trackerUI">
-  <video id="videoEl" autoplay muted playsinline></video>
-  <canvas id="mainCanvas"></canvas>
+  <video id="videoEl" class="mirror" autoplay muted playsinline></video>
+  <canvas id="mainCanvas" class="mirror"></canvas>
 
   <!-- Header -->
   <div class="hdr">
@@ -757,6 +850,28 @@ body::after{
     <span>MediaPipe Holistic</span> ENGINE<br/>
     AAYAN SYSTEMS © 2026
   </div>
+
+  <!-- ══ CAMERA FLIP BUTTON (new) ══ -->
+  <div id="camFacingLabel" class="front">FRONT CAM</div>
+  <button id="flipCamBtn" onclick="flipCamera()" title="Switch Camera">
+    <!-- Flip/rotate camera icon -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 7h-3a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/>
+      <circle cx="12" cy="13" r="3"/>
+      <!-- Flip arrows on top -->
+      <path d="M8 3 5 6l3 3"/>
+      <path d="M5 6h7"/>
+      <path d="M16 3l3 3-3 3"/>
+      <path d="M19 6h-7"/>
+    </svg>
+  </button>
+
+  <!-- Camera switching overlay -->
+  <div id="switchOverlay">
+    <div class="switch-spinner"></div>
+    <div class="switch-text">SWITCHING CAMERA</div>
+  </div>
+
 </div>
 
 <!-- MediaPipe CDN -->
@@ -774,35 +889,29 @@ const video  = $('videoEl');
 const canvas = $('mainCanvas');
 const ctx    = canvas.getContext('2d');
 
+// ── Camera state ──────────────────────────────
+let currentFacingMode = 'user';   // 'user' = front, 'environment' = back
+let mpCamera = null;              // MediaPipe Camera instance
+let holisticInstance = null;      // reuse the loaded model
+
 // ── Feature toggles ───────────────────────────
 const SHOW = {
-  // parent groups
   face:true, hands:true, body:true,
-  // flat
   glow:true, labels:true, camera:true,
-  // face sub-items
   faceMesh:true, faceContour:true, faceEyes:true,
   faceBrows:true, faceNose:true, faceLips:true, faceCheeks:true,
-  // hand sub-items
   handLeft:true, handRight:true,
-  // body sub-items
   bodyChest:true, bodyBelly:true, bodyArms:true, bodyLegs:true, bodyFeet:true,
 };
 
-// Toggle a group parent button → expand/collapse sub-panel
 function toggleGroup(grp){
   const groupEl = $('grp' + grp.charAt(0).toUpperCase() + grp.slice(1));
   if(!groupEl) return;
-  const isOpen = groupEl.classList.toggle('open');
-  // Also toggle the group on/off when collapsing? No — expand only.
-  // Parent on/off is handled by double-clicking or we just leave group always-on.
-  // Actually: single click = expand. The parent stays "on" always.
-  // If you want to turn off all face, uncheck each sub-item.
+  groupEl.classList.toggle('open');
   const btn = $('tog' + grp.charAt(0).toUpperCase() + grp.slice(1));
-  if(btn) btn.classList.toggle('on', true); // always keep parent lit
+  if(btn) btn.classList.toggle('on', true);
 }
 
-// Toggle a sub-item
 function toggleSub(k){
   SHOW[k] = !SHOW[k];
   const id = 'tog' + k.charAt(0).toUpperCase() + k.slice(1);
@@ -810,7 +919,6 @@ function toggleSub(k){
   if(btn) btn.classList.toggle('on', SHOW[k]);
 }
 
-// Toggle a flat button (glow, labels, camera)
 function toggleFlat(k){
   SHOW[k] = !SHOW[k];
   const id = 'tog' + k.charAt(0).toUpperCase() + k.slice(1);
@@ -821,7 +929,6 @@ function toggleFlat(k){
   }
 }
 
-// Legacy: keep old toggle() working for glow/labels
 function toggle(k){ toggleFlat(k); }
 
 // ── Colors ────────────────────────────────────
@@ -858,6 +965,7 @@ class Smoother {
     this.prev = out;
     return out;
   }
+  reset(){ this.prev=null; }
 }
 
 const smoFace  = new Smoother(0.6);
@@ -865,10 +973,8 @@ const smoPose  = new Smoother(0.55);
 const smoLHand = new Smoother(0.65);
 const smoRHand = new Smoother(0.65);
 
-// ── Result store ──────────────────────────────
 let lastResults = null;
 
-// ── FPS ───────────────────────────────────────
 let frameTimes = [];
 function calcFPS(){
   const now = performance.now();
@@ -877,13 +983,11 @@ function calcFPS(){
   return frameTimes.length;
 }
 
-// ── Canvas resize ─────────────────────────────
 function resizeCanvas(){
   canvas.width  = video.videoWidth  || window.innerWidth;
   canvas.height = video.videoHeight || window.innerHeight;
 }
 
-// ── Glow helper ───────────────────────────────
 function setGlow(color, blur=12){
   if(!SHOW.glow){ ctx.shadowBlur=0; return; }
   ctx.shadowColor = color;
@@ -891,12 +995,10 @@ function setGlow(color, blur=12){
 }
 function clearGlow(){ ctx.shadowBlur=0; }
 
-// ── Coordinate helpers ────────────────────────
 function px(lm){ return [lm.x*canvas.width, lm.y*canvas.height]; }
 function pxI(lms,i){ return px(lms[i]); }
 function vis(lm,thresh=0.25){ return !lm.visibility || lm.visibility > thresh; }
 
-// ── Dot ───────────────────────────────────────
 function dot(x,y,r,color,glow=10){
   setGlow(color,glow);
   ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
@@ -904,7 +1006,6 @@ function dot(x,y,r,color,glow=10){
   clearGlow();
 }
 
-// ── Line ──────────────────────────────────────
 function line(ax,ay,bx,by,color,w=2,glow=8){
   setGlow(color,glow);
   ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by);
@@ -912,7 +1013,6 @@ function line(ax,ay,bx,by,color,w=2,glow=8){
   clearGlow();
 }
 
-// ── Filled poly ───────────────────────────────
 function poly(pts,fill,alpha=0.2,stroke=null){
   if(pts.length<3) return;
   ctx.save();
@@ -929,7 +1029,6 @@ function poly(pts,fill,alpha=0.2,stroke=null){
   ctx.restore();
 }
 
-// ── Label ─────────────────────────────────────
 function label(x,y,text,color){
   if(!SHOW.labels) return;
   ctx.save();
@@ -952,26 +1051,17 @@ const RIGHT_EYE =[362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,39
 const LIP_OUT   =[61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146,61];
 const LIP_IN    =[78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95,78];
 
-// Iris landmark indices (available when refineFaceLandmarks: true)
-// Left iris: 468=center, 469=top, 470=right, 471=bottom, 472=left
-// Right iris: 473=center, 474=top, 475=right, 476=bottom, 477=left
 const LEFT_IRIS_CENTER  = 468;
 const RIGHT_IRIS_CENTER = 473;
 const LEFT_IRIS_RING    = [469,470,471,472];
 const RIGHT_IRIS_RING   = [474,475,476,477];
 
-// Eyebrows — traced as closed outline: lower-inner → lower → lower-outer → upper-outer → upper → upper-inner → close
-// This winding order prevents crossed/jagged lines
 const LEFT_EYEBROW  = [46,53,52,65,55,107,66,105,63,70,46];
 const RIGHT_EYEBROW = [276,283,282,295,285,336,296,334,293,300,276];
 
-// Nose bridge + nostrils
 const NOSE_BRIDGE = [168,6,197,195,5,4];
 const NOSE_BOTTOM = [4,5,195,197,6,168,122,188,114,217,126,142,97,2,326,371,399,437,343,412,399];
 
-// Forehead region: top of face
-const FOREHEAD_IDX=[10,109,67,103,54,21,162,127,234,93,132,58,172];
-// Cheek dots (sparse)
 const CHEEK_L=[234,93,132,58,172,136,150,176,148,152];
 const CHEEK_R=[454,323,361,288,397,365,379,378,400,377];
 
@@ -981,7 +1071,6 @@ function drawFaceLandmarks(rawLms){
 
   const W=canvas.width, H=canvas.height;
 
-  // All 468 micro dots
   if(SHOW.faceMesh){
     ctx.save();
     for(const lm of lms){
@@ -992,7 +1081,6 @@ function drawFaceLandmarks(rawLms){
     ctx.restore();
   }
 
-  // Outer face contour
   if(SHOW.faceContour){
     ctx.save(); setGlow(C.face,10);
     ctx.beginPath(); ctx.strokeStyle=C.face+'cc'; ctx.lineWidth=1.5;
@@ -1003,7 +1091,6 @@ function drawFaceLandmarks(rawLms){
     ctx.stroke(); clearGlow(); ctx.restore();
   }
 
-  // Eyebrows — filled arch shape with glowing outline
   if(SHOW.faceBrows) for(const brow of [LEFT_EYEBROW, RIGHT_EYEBROW]){
     const pts = brow.map(i=>lms[i]).filter(Boolean).map(lm=>[lm.x*W, lm.y*H]);
     if(pts.length < 4) continue;
@@ -1020,7 +1107,6 @@ function drawFaceLandmarks(rawLms){
     clearGlow(); ctx.restore();
   }
 
-  // Eyes — eyelid contours + iris (guarded by SHOW.faceEyes)
   if(SHOW.faceEyes){
     for(const eye of [LEFT_EYE, RIGHT_EYE]){
       ctx.save(); setGlow(C.eye,14);
@@ -1032,7 +1118,6 @@ function drawFaceLandmarks(rawLms){
       }
       ctx.stroke(); clearGlow(); ctx.restore();
     }
-    // Left iris
     const leftIrisC = lms[LEFT_IRIS_CENTER];
     if(leftIrisC){
       const irisRingL = LEFT_IRIS_RING.map(i=>lms[i]).filter(Boolean);
@@ -1048,7 +1133,6 @@ function drawFaceLandmarks(rawLms){
       }
       dot(leftIrisC.x*W, leftIrisC.y*H, 3.5, C.eye, 20);
     }
-    // Right iris
     const rightIrisC = lms[RIGHT_IRIS_CENTER];
     if(rightIrisC){
       const irisRingR = RIGHT_IRIS_RING.map(i=>lms[i]).filter(Boolean);
@@ -1066,7 +1150,6 @@ function drawFaceLandmarks(rawLms){
     }
   }
 
-  // Nose bridge
   if(SHOW.faceNose){
     ctx.save(); setGlow(C.face, 8);
     ctx.beginPath(); ctx.strokeStyle=C.face+'66'; ctx.lineWidth=1;
@@ -1078,7 +1161,6 @@ function drawFaceLandmarks(rawLms){
     ctx.stroke(); clearGlow(); ctx.restore();
   }
 
-  // Lips
   if(SHOW.faceLips){
     for(const lip of [LIP_OUT,LIP_IN]){
       ctx.save(); setGlow(C.lip,10);
@@ -1092,10 +1174,8 @@ function drawFaceLandmarks(rawLms){
     }
   }
 
-  // Nose tip dot
   if(SHOW.faceNose) dot(lms[1].x*W,lms[1].y*H,3,C.face,14);
 
-  // Cheek region dots (sparse glow)
   if(SHOW.faceCheeks){
     for(const idx of [...CHEEK_L,...CHEEK_R]){
       const lm=lms[idx];
@@ -1122,14 +1202,11 @@ function drawHandLandmarks(rawLms, side){
   const W=canvas.width,H=canvas.height;
   const base = side==='Left' ? C.lhand : C.rhand;
 
-  // Palm fill
   const palmPts=PALM_IDX.map(i=>[lms[i].x*W,lms[i].y*H]);
   poly(palmPts, base, 0.12, base);
 
-  // Each finger
   for(const [fname,joints] of Object.entries(FINGER_GROUPS)){
     const fc=FINGER_COLORS[fname];
-    // Wrist to MCP
     line(lms[0].x*W,lms[0].y*H,lms[joints[0]].x*W,lms[joints[0]].y*H,fc,1.5,6);
     for(let i=0;i<joints.length-1;i++){
       const a=lms[joints[i]], b=lms[joints[i+1]];
@@ -1142,10 +1219,8 @@ function drawHandLandmarks(rawLms, side){
     });
   }
 
-  // Wrist
   dot(lms[0].x*W,lms[0].y*H,6,base,16);
 
-  // Palm connections
   [[1,5],[5,9],[9,13],[13,17]].forEach(([a,b])=>{
     line(lms[a].x*W,lms[a].y*H,lms[b].x*W,lms[b].y*H,base+'66',1,0);
   });
@@ -1154,7 +1229,6 @@ function drawHandLandmarks(rawLms, side){
 // ═══════════════════════════════════════════════
 // POSE / BODY DRAWING
 // ═══════════════════════════════════════════════
-// Holistic pose landmark indices (same as Pose 33 pts)
 const PL={
   NOSE:0,
   L_EAR:7,  R_EAR:8,
@@ -1208,7 +1282,6 @@ function posePolyRegion(lms,indices,fill,alpha=0.28){
   poly(pts,fill,alpha,fill);
 }
 
-// ── Foot + estimated 5 toes ───────────────────
 function drawFootDetail(lms, side){
   const L = side==='left';
   const aIdx=L?PL.L_ANKLE:PL.R_ANKLE;
@@ -1223,7 +1296,6 @@ function drawFootDetail(lms, side){
   const heel =[lms[hIdx].x*W, lms[hIdx].y*H];
   const foot =[lms[fIdx].x*W, lms[fIdx].y*H];
 
-  // Foot direction
   const vx=foot[0]-heel[0], vy=foot[1]-heel[1];
   const len=Math.sqrt(vx*vx+vy*vy)||1;
   const dir=[vx/len, vy/len];
@@ -1234,7 +1306,7 @@ function drawFootDetail(lms, side){
   const tips=[], bases=[];
   for(let i=0;i<N;i++){
     const t=(i/(N-1))-0.5;
-    const lf=1.0-0.28*Math.abs(t*2);  // middle toe longest
+    const lf=1.0-0.28*Math.abs(t*2);
     const base=[
       foot[0]+perp[0]*t*fw*0.65,
       foot[1]+perp[1]*t*fw*0.65
@@ -1245,19 +1317,16 @@ function drawFootDetail(lms, side){
     ];
     bases.push(base); tips.push(tip);
 
-    // Each toe segment with glow
     line(base[0],base[1],tip[0],tip[1],color,2,10);
     dot(tip[0],tip[1],3.5,color,12);
     dot(base[0],base[1],2,color,6);
   }
 
-  // Lateral toe connection
   for(let i=0;i<N-1;i++){
     line(tips[i][0],tips[i][1],tips[i+1][0],tips[i+1][1],color+'55',1,0);
     line(bases[i][0],bases[i][1],bases[i+1][0],bases[i+1][1],color+'44',1,0);
   }
 
-  // Foot outline polygon
   ctx.save(); setGlow(color,8);
   ctx.beginPath(); ctx.strokeStyle=color+'88'; ctx.lineWidth=1.5;
   ctx.moveTo(heel[0],heel[1]);
@@ -1266,7 +1335,6 @@ function drawFootDetail(lms, side){
   ctx.stroke();
   clearGlow(); ctx.restore();
 
-  // Foot skeleton bones
   bone(lms,aIdx,hIdx,color,2,10);
   bone(lms,hIdx,fIdx,color,2,10);
   bone(lms,aIdx,fIdx,color,1.5,6);
@@ -1276,20 +1344,16 @@ function drawFootDetail(lms, side){
   joint(lms,fIdx,color,4);
 }
 
-// ── Main body drawing ─────────────────────────
 function drawBody(rawLms){
   const lms = smoPose.smooth(rawLms);
   if(!lms) return;
 
-  // ── Filled body regions ─────────────────────
   if(SHOW.bodyChest){
     posePolyRegion(lms,[PL.L_SHOULDER,PL.R_SHOULDER,PL.R_HIP,PL.L_HIP], C.chest, 0.22);
-    // Torso frame bones
     bone(lms,PL.L_SHOULDER,PL.R_SHOULDER, C.spine, 2.5, 10);
     bone(lms,PL.L_HIP,     PL.R_HIP,      C.spine, 2.5, 10);
     bone(lms,PL.L_SHOULDER,PL.L_HIP,      C.spine, 2,   8);
     bone(lms,PL.R_SHOULDER,PL.R_HIP,      C.spine, 2,   8);
-    // Neck
     if(pv(lms,PL.NOSE)&&pv(lms,PL.L_SHOULDER)&&pv(lms,PL.R_SHOULDER)){
       const ls=posePx(lms,PL.L_SHOULDER), rs=posePx(lms,PL.R_SHOULDER);
       const mid=[(ls[0]+rs[0])/2,(ls[1]+rs[1])/2];
@@ -1345,11 +1409,9 @@ function drawBody(rawLms){
     poseLabel(lms,PL.R_ANKLE,'R.ankle',C.rshin);
   }
 
-  // Nose joint (always with body since it's a pose point)
   joint(lms,PL.NOSE,C.face,5);
   poseLabel(lms,PL.NOSE,'nose',C.face);
 
-  // ── Feet + Toes ─────────────────────────────
   if(SHOW.bodyFeet){
     poseLabel(lms,PL.L_HEEL,'L.heel',C.lfoot);
     poseLabel(lms,PL.R_HEEL,'R.heel',C.rfoot);
@@ -1383,7 +1445,6 @@ function render(){
   requestAnimationFrame(render);
 }
 
-// ── Stats HUD ─────────────────────────────────
 function updateStats(r){
   const hasFace  = !!r.faceLandmarks;
   const hasPose  = !!r.poseLandmarks;
@@ -1402,7 +1463,6 @@ function updateStats(r){
     (hasPose?r.poseLandmarks.length:0);
   $('sTotal').textContent = total;
 
-  // Confidence bars
   $('cFace').style.width  = hasFace ? '100%' : '0%';
   const poseConf = hasPose
     ? Math.round(r.poseLandmarks.filter(l=>l.visibility>0.5).length/r.poseLandmarks.length*100)
@@ -1417,6 +1477,94 @@ function updateClock(){
     d.getHours().toString().padStart(2,'0')+':'+
     d.getMinutes().toString().padStart(2,'0')+':'+
     d.getSeconds().toString().padStart(2,'0');
+}
+
+// ═══════════════════════════════════════════════
+// CAMERA FLIP — core new feature
+// ═══════════════════════════════════════════════
+async function flipCamera(){
+  const btn = $('flipCamBtn');
+  const overlay = $('switchOverlay');
+  const label = $('camFacingLabel');
+
+  // Animate button spin
+  btn.classList.add('flipping');
+  setTimeout(()=>btn.classList.remove('flipping'), 500);
+
+  // Show switching overlay
+  overlay.classList.add('active');
+  lastResults = null; // clear stale landmarks
+
+  // Stop current MediaPipe camera
+  if(mpCamera){
+    try{ await mpCamera.stop(); } catch(e){}
+  }
+
+  // Stop existing tracks
+  if(video.srcObject){
+    video.srcObject.getTracks().forEach(t=>t.stop());
+    video.srcObject = null;
+  }
+
+  // Toggle facing mode
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  const isFront = currentFacingMode === 'user';
+
+  // Mirror video + canvas only for front camera
+  if(isFront){
+    video.classList.add('mirror');
+    canvas.classList.add('mirror');
+  } else {
+    video.classList.remove('mirror');
+    canvas.classList.remove('mirror');
+  }
+
+  // Update label
+  label.textContent = isFront ? 'FRONT CAM' : 'BACK CAM';
+  label.className = isFront ? 'front' : 'back';
+  // Update the CSS position reference id
+  label.id = 'camFacingLabel';
+
+  // Get new stream
+  let newStream;
+  try {
+    newStream = await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode: currentFacingMode,
+        width: 1280, height: 720,
+      },
+      audio: false,
+    });
+  } catch(e) {
+    // Fallback: try without resolution constraints
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode: currentFacingMode },
+        audio: false,
+      });
+    } catch(e2) {
+      alert('Could not switch camera:\n'+e2.message);
+      overlay.classList.remove('active');
+      return;
+    }
+  }
+
+  video.srcObject = newStream;
+  await new Promise(r=>{ video.onloadedmetadata=r; });
+  video.play();
+
+  // Reset smoothers so we don't get artefacts from old positions
+  smoFace.reset(); smoPose.reset(); smoLHand.reset(); smoRHand.reset();
+
+  // Restart MediaPipe camera loop on the new video
+  mpCamera = new Camera(video, {
+    onFrame: async()=>{ await holisticInstance.send({image:video}); },
+    width: 1280, height: 720,
+  });
+
+  await mpCamera.start();
+
+  overlay.classList.remove('active');
 }
 
 // ═══════════════════════════════════════════════
@@ -1451,19 +1599,16 @@ async function startTracking(){
 
   setLoad(15,'Initialising Holistic model...');
 
-  // ── MediaPipe Holistic ────────────────────────
-  // Single unified model: face + hands + pose in one pass
-  // More accurate than running 3 separate models
   const holistic=new Holistic({
     locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
   });
 
   holistic.setOptions({
-    modelComplexity       : 1,      // 0=lite, 1=full (best accuracy/speed balance)
-    smoothLandmarks       : true,   // built-in temporal smoothing
+    modelComplexity       : 1,
+    smoothLandmarks       : true,
     enableSegmentation    : false,
     smoothSegmentation    : false,
-    refineFaceLandmarks   : true,   // 468+iris landmarks
+    refineFaceLandmarks   : true,
     minDetectionConfidence: 0.5,
     minTrackingConfidence : 0.5,
   });
@@ -1472,17 +1617,19 @@ async function startTracking(){
     lastResults = results;
   });
 
+  // Store holistic reference for reuse on camera flip
+  holisticInstance = holistic;
+
   setLoad(40,'Loading face mesh weights...');
   await holistic.initialize();
   setLoad(80,'Starting camera pipeline...');
 
-  // ── Camera loop ───────────────────────────────
-  const camera=new Camera(video,{
+  mpCamera=new Camera(video,{
     onFrame:async()=>{ await holistic.send({image:video}); },
     width:1280, height:720,
   });
 
-  await camera.start();
+  await mpCamera.start();
 
   setLoad(100,'Ready!');
   await new Promise(r=>setTimeout(r,500));
