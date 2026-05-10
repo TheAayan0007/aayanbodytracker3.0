@@ -866,7 +866,28 @@ body::after{
       <div style="color:var(--accent);font-size:0.8rem;">›</div>
     </div>
   </div>
+
+  <!-- Data Management Section -->
+  <div class="sp-section">
+    <div class="sp-section-title">Data Management</div>
+    <div class="sp-row" style="cursor:pointer;" onclick="exportData()">
+      <div>
+        <div class="sp-row-label">◈ EXPORT DATA</div>
+        <div class="sp-row-sub">Download all persons as a ZIP file</div>
+      </div>
+      <div style="color:var(--accent3);font-size:0.8rem;">↓</div>
+    </div>
+    <div class="sp-row" style="cursor:pointer;" onclick="triggerImport()">
+      <div>
+        <div class="sp-row-label">◈ IMPORT DATA</div>
+        <div class="sp-row-sub">Restore persons from a ZIP file</div>
+      </div>
+      <div style="color:var(--accent3);font-size:0.8rem;">↑</div>
+    </div>
+  </div>
 </div>
+<!-- Hidden file input for import -->
+<input type="file" id="importFileInput" accept=".zip" style="display:none" onchange="handleImportFile(event)"/>
 
 <!-- ═══════════════════════════════════
      PERSONS MODAL
@@ -909,6 +930,8 @@ body::after{
 <!-- Toast notification -->
 <div id="faceToast"></div>
 
+<!-- JSZip for export/import -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <!-- face-api.js -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <!-- MediaPipe -->
@@ -1435,6 +1458,120 @@ function showToast(msg){
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2500);
 }
 
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT / IMPORT DATA
+// ══════════════════════════════════════════════════════════════
+
+async function exportData(){
+  if(!knownPersons.length){
+    showToast('⚠ NO PERSONS TO EXPORT');
+    return;
+  }
+  showToast('⏳ PREPARING EXPORT...');
+  try {
+    const zip = new JSZip();
+
+    // manifest.json — all person records (without snapshot blob)
+    const manifest = knownPersons.map(p => ({
+      uid:       p.uid,
+      name:      p.name,
+      descriptor: Array.from(p.descriptor instanceof Float32Array ? p.descriptor : new Float32Array(Object.values(p.descriptor))),
+      attrs:     p.attrs,
+      timestamp: p.timestamp,
+      folder:    p.folder || (p.name.replace(/\s+/g,'-') + '-' + p.uid),
+    }));
+    zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+    // One folder per person containing their snapshot image
+    for(const p of knownPersons){
+      const folder = p.folder || (p.name.replace(/\s+/g,'-') + '-' + p.uid);
+      if(p.snapshot && p.snapshot.startsWith('data:')){
+        // Convert dataURL to binary
+        const base64 = p.snapshot.split(',')[1];
+        zip.folder(folder).file('snapshot.jpg', base64, {base64: true});
+      }
+    }
+
+    const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:6}});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'aayan-facedb-' + new Date().toISOString().slice(0,10) + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+    showToast('✓ EXPORTED ' + knownPersons.length + ' PERSONS');
+  } catch(e){
+    showToast('✗ EXPORT FAILED: ' + e.message);
+    console.error('[Export]', e);
+  }
+}
+
+function triggerImport(){
+  $('importFileInput').value = '';
+  $('importFileInput').click();
+}
+
+async function handleImportFile(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  showToast('⏳ READING ZIP...');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Parse manifest
+    const manifestFile = zip.file('manifest.json');
+    if(!manifestFile) throw new Error('manifest.json not found in ZIP');
+    const manifest = JSON.parse(await manifestFile.async('string'));
+
+    let imported = 0, skipped = 0;
+    for(const entry of manifest){
+      // Skip if UID already exists
+      if(knownPersons.find(p => p.uid === entry.uid)){
+        skipped++;
+        continue;
+      }
+
+      // Try to load snapshot image from the folder
+      const folder  = entry.folder || (entry.name.replace(/\s+/g,'-') + '-' + entry.uid);
+      const imgFile = zip.file(folder + '/snapshot.jpg');
+      let snapshotDataURL = '';
+      if(imgFile){
+        const b64 = await imgFile.async('base64');
+        snapshotDataURL = 'data:image/jpeg;base64,' + b64;
+      }
+
+      const person = {
+        uid:        entry.uid,
+        name:       entry.name,
+        descriptor: entry.descriptor,   // plain array — saved to DB as-is
+        attrs:      entry.attrs || {},
+        timestamp:  entry.timestamp || new Date().toISOString(),
+        folder:     folder,
+        snapshot:   snapshotDataURL,
+      };
+
+      await dbPut(person);
+
+      // Add to live memory with Float32Array descriptor for matching
+      const livePerson = Object.assign({}, person, {
+        descriptor: new Float32Array(entry.descriptor)
+      });
+      knownPersons.push(livePerson);
+      imported++;
+    }
+
+    updatePersonsPanel();
+    $('sKnown').textContent = knownPersons.length;
+    showToast(`✓ IMPORTED ${imported} · SKIPPED ${skipped}`);
+    if(imported > 0) showToast('✓ FACE ID UPDATED — ' + knownPersons.length + ' KNOWN');
+  } catch(e){
+    showToast('✗ IMPORT FAILED: ' + e.message);
+    console.error('[Import]', e);
+  }
+}
 
 // ══════════════════════════════════════════════════════════════
 // FACE ID OVERLAY DRAWING (on faceCanvas)
