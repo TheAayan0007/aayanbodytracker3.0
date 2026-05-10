@@ -1,0 +1,1874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Aayan Body Tracker — v4.0 + Face ID</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:       #010409;
+  --panel:    rgba(5, 12, 28, 0.92);
+  --border:   #0d2137;
+  --accent:   #00ffe7;
+  --accent2:  #ff2d6b;
+  --accent3:  #ffc300;
+  --dim:      #2a4060;
+  --text:     #a0c4e0;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Rajdhani',sans-serif;
+  height:100vh;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:9998;opacity:0.4;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,231,0.012) 3px,rgba(0,255,231,0.012) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ── Permission Screen ── */
+#permScreen{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+.perm-wrap{width:480px;position:relative;}
+.perm-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:600px;background:radial-gradient(ellipse,rgba(0,255,231,0.06) 0%,transparent 70%);pointer-events:none;}
+.perm-box{position:relative;background:var(--panel);border:1px solid #0d3050;padding:2.5rem 2.5rem 2rem;clip-path:polygon(0 0,calc(100% - 32px) 0,100% 32px,100% 100%,32px 100%,0 calc(100% - 32px));}
+.perm-box::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);}
+.brand-tag{font-family:'Orbitron',monospace;font-size:0.6rem;letter-spacing:0.5em;color:var(--accent);opacity:0.6;margin-bottom:1.8rem;display:flex;align-items:center;gap:0.75rem;}
+.brand-tag::before,.brand-tag::after{content:'';flex:1;height:1px;background:var(--dim)}
+.perm-scan-ring{width:100px;height:100px;margin:0 auto 1.5rem;position:relative;display:flex;align-items:center;justify-content:center;}
+.ring{position:absolute;border-radius:50%;border:1px solid;}
+.ring1{width:100px;height:100px;border-color:rgba(0,255,231,0.3);animation:spinRing 4s linear infinite;}
+.ring2{width:72px;height:72px;border-color:rgba(0,255,231,0.15);animation:spinRing 3s linear infinite reverse;}
+.ring3{width:48px;height:48px;border-color:rgba(0,255,231,0.4);animation:pulseRing 2s ease-in-out infinite;}
+@keyframes spinRing{to{transform:rotate(360deg)}}
+@keyframes pulseRing{0%,100%{transform:scale(1);opacity:0.4}50%{transform:scale(1.08);opacity:1}}
+.ring-icon{width:28px;height:28px;position:relative;z-index:2;color:var(--accent);}
+.perm-title{font-family:'Orbitron',monospace;font-size:1.6rem;font-weight:900;text-align:center;margin-bottom:0.4rem;background:linear-gradient(135deg,#ffffff 0%,var(--accent) 60%,#00a88f 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1.15;}
+.perm-version{text-align:center;font-family:'Orbitron',monospace;font-size:0.6rem;letter-spacing:0.3em;color:var(--accent3);margin-bottom:1.4rem;}
+.perm-desc{text-align:center;font-size:0.85rem;color:var(--dim);line-height:1.6;margin-bottom:1.8rem;font-family:'Rajdhani',sans-serif;letter-spacing:0.05em;}
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:2rem;}
+.feat{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.6rem;background:rgba(0,255,231,0.03);border:1px solid rgba(0,255,231,0.07);font-size:0.75rem;letter-spacing:0.05em;color:var(--text);}
+.feat-pip{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.model-badge{text-align:center;font-size:0.65rem;letter-spacing:0.1em;color:var(--dim);margin-bottom:1.5rem;padding:0.4rem;border:1px solid var(--border);font-family:'Orbitron',monospace;}
+.model-badge span{color:var(--accent);font-weight:700}
+.btn-cam{width:100%;padding:1rem;background:transparent;border:1px solid var(--accent);color:var(--accent);font-family:'Orbitron',monospace;font-size:0.75rem;font-weight:700;letter-spacing:0.25em;text-transform:uppercase;cursor:pointer;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));position:relative;overflow:hidden;transition:all 0.25s;}
+.btn-cam::before{content:'';position:absolute;inset:0;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform 0.3s ease;z-index:-1;}
+.btn-cam:hover{color:#010409}
+.btn-cam:hover::before{transform:scaleX(1)}
+.btn-cam:hover{box-shadow:0 0 30px rgba(0,255,231,0.4)}
+
+/* ── Loading Screen ── */
+#loadScreen{position:fixed;inset:0;z-index:400;display:none;align-items:center;justify-content:center;background:var(--bg);flex-direction:column;gap:1.2rem;}
+.load-title{font-family:'Orbitron',monospace;font-size:0.65rem;letter-spacing:0.5em;color:var(--accent);text-transform:uppercase;}
+.load-bar-outer{width:320px;height:3px;background:rgba(0,255,231,0.08);position:relative;overflow:visible;}
+.load-bar-inner{height:100%;width:0%;background:var(--accent);transition:width 0.4s cubic-bezier(0.4,0,0.2,1);position:relative;box-shadow:0 0 16px var(--accent),0 0 32px rgba(0,255,231,0.4);}
+.load-bar-inner::after{content:'';position:absolute;right:-1px;top:-4px;width:2px;height:11px;background:#fff;box-shadow:0 0 8px var(--accent);}
+.load-pct{font-family:'Orbitron',monospace;font-size:1.8rem;font-weight:900;color:var(--accent);letter-spacing:-0.02em;}
+.load-msg{font-size:0.7rem;letter-spacing:0.2em;color:var(--dim);text-transform:uppercase;font-family:'Rajdhani',sans-serif;}
+.load-dots span{display:inline-block;animation:dotPulse 1.2s ease-in-out infinite;color:var(--accent);}
+.load-dots span:nth-child(2){animation-delay:0.2s}
+.load-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes dotPulse{0%,80%,100%{opacity:0.2}40%{opacity:1}}
+
+/* ── Tracker UI ── */
+#trackerUI{display:none;position:fixed;inset:0;}
+#videoEl{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity 0.3s ease;}
+#videoEl.mirror{transform:scaleX(-1);}
+#mainCanvas{position:absolute;inset:0;width:100%;height:100%;}
+#mainCanvas.mirror{transform:scaleX(-1);}
+
+.hdr{position:absolute;top:0;left:0;right:0;z-index:20;padding:0.8rem 1.4rem;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(1,4,9,0.95) 0%,transparent 100%);border-bottom:1px solid rgba(0,255,231,0.06);}
+.hdr-left{display:flex;flex-direction:column;}
+.hdr-name{font-family:'Orbitron',monospace;font-size:1rem;font-weight:900;color:#fff;letter-spacing:0.1em;}
+.hdr-name span{color:var(--accent)}
+.hdr-ver{font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:0.4em;color:var(--accent3);margin-top:0.1rem;}
+.hdr-center{display:flex;align-items:center;gap:0.5rem;font-family:'Orbitron',monospace;font-size:0.6rem;letter-spacing:0.2em;color:var(--accent);}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:liveBlink 1.4s ease-in-out infinite;}
+@keyframes liveBlink{0%,100%{opacity:1;box-shadow:0 0 8px var(--accent)}50%{opacity:0.3;box-shadow:none}}
+.hdr-right{font-family:'Orbitron',monospace;font-size:0.6rem;color:var(--dim);letter-spacing:0.15em;}
+
+.bracket{position:absolute;z-index:15;width:28px;height:28px;border-color:var(--accent);border-style:solid;opacity:0.4;}
+.bracket.tl{top:54px;left:12px;border-width:2px 0 0 2px}
+.bracket.tr{top:54px;right:12px;border-width:2px 2px 0 0}
+.bracket.bl{bottom:12px;left:12px;border-width:0 0 2px 2px}
+.bracket.br{bottom:12px;right:12px;border-width:0 2px 2px 0}
+
+/* Stats panel */
+#statsPanel{
+  position:fixed;right:14px;z-index:100;
+  min-width:170px;
+  background:rgba(5,12,28,0.92);border:1px solid #0d2137;
+  padding:10px 12px;backdrop-filter:blur(8px);border-radius:12px;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);
+}
+#statsPanel.panel-top{top:70px;}
+#statsPanel.panel-bottom{bottom:90px;}
+.panel-title{font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:0.35em;color:var(--dim);text-transform:uppercase;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border);}
+.stat-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;font-size:0.72rem;}
+.stat-row:last-child{margin-bottom:0}
+.stat-label{color:var(--dim);letter-spacing:0.05em;font-family:'Rajdhani',sans-serif}
+.stat-val{font-family:'Orbitron',monospace;font-size:0.65rem;font-weight:700;color:var(--accent);}
+.confidence-bar{margin-top:0.8rem;padding-top:0.6rem;border-top:1px solid var(--border);}
+.conf-label{font-size:0.55rem;letter-spacing:0.2em;color:var(--dim);font-family:'Orbitron',monospace;margin-bottom:0.3rem;}
+.conf-row{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;}
+.conf-name{font-size:0.6rem;color:var(--dim);width:40px;font-family:'Rajdhani',sans-serif}
+.conf-track{flex:1;height:2px;background:var(--border);border-radius:1px;overflow:hidden}
+.conf-fill{height:100%;border-radius:1px;transition:width 0.3s ease}
+.emotion-row{margin-top:8px;padding-top:6px;border-top:1px solid var(--border);}
+.emotion-label{font-family:'Orbitron',monospace;font-size:0.45rem;letter-spacing:0.2em;color:var(--dim);margin-bottom:4px;}
+.emotion-val{font-family:'Orbitron',monospace;font-size:0.6rem;color:#ffc300;font-weight:700;letter-spacing:0.1em;text-shadow:0 0 10px rgba(255,195,0,0.5);}
+
+/* FPS panel */
+#fpsPanel{
+  position:fixed;left:14px;z-index:100;
+  background:rgba(5,12,28,0.92);border:1px solid #0d2137;
+  padding:8px 10px;backdrop-filter:blur(8px);border-radius:12px;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);
+}
+#fpsPanel.panel-top{top:70px;}
+#fpsPanel.panel-bottom{bottom:90px;}
+.fps-big{font-family:'Orbitron',monospace;font-size:1.8rem;font-weight:900;color:var(--accent);line-height:1;text-shadow:0 0 20px rgba(0,255,231,0.5);}
+.fps-label{font-size:0.55rem;letter-spacing:0.3em;color:var(--dim);font-family:'Orbitron',monospace;}
+
+/* Legend / Region Map */
+#legend{
+  position:fixed;left:14px;z-index:100;
+  background:rgba(5,12,28,0.92);border:1px solid #0d2137;
+  padding:10px 12px;backdrop-filter:blur(8px);border-radius:12px;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%);
+}
+#legend.panel-top{top:70px;}
+#legend.panel-bottom{bottom:90px;}
+.leg-title{font-family:'Orbitron',monospace;font-size:0.45rem;letter-spacing:0.3em;color:var(--dim);margin-bottom:0.6rem;text-transform:uppercase;}
+.leg-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1rem;}
+.leg-item{display:flex;align-items:center;gap:0.45rem;font-size:0.65rem;letter-spacing:0.05em;color:var(--dim);font-family:'Rajdhani',sans-serif;}
+.leg-pip{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* Model badge */
+#modelBadge{
+  position:fixed;right:14px;z-index:100;
+  background:rgba(5,12,28,0.9);border:1px solid var(--border);
+  padding:0.4rem 0.7rem;font-family:'Orbitron',monospace;font-size:0.45rem;
+  letter-spacing:0.2em;color:var(--dim);text-align:right;backdrop-filter:blur(8px);
+  border-radius:8px;
+}
+#modelBadge span{color:var(--accent3)}
+#modelBadge.badge-bottom{bottom:90px;}
+#modelBadge.badge-top{top:90px;}
+
+/* floating panels shown in tracker */
+.float-panel{
+  position:fixed;z-index:100;
+  background:rgba(5,12,28,0.92);
+  border:1px solid #0d2137;
+  backdrop-filter:blur(10px);
+  border-radius:12px;
+  padding:10px 12px;
+  transition:opacity 0.2s;
+}
+/* Toggle Panel floating */
+#togglePanel{
+  left:14px;
+  z-index:100;
+  display:flex;flex-direction:column;gap:0.4rem;
+  max-height:calc(100vh - 160px);overflow-y:auto;scrollbar-width:none;
+  background:rgba(5,12,28,0.92);border:1px solid #0d2137;
+  backdrop-filter:blur(10px);border-radius:12px;padding:10px;
+  position:fixed;
+}
+#togglePanel.panel-top{top:70px;}
+#togglePanel.panel-bottom{bottom:90px;}
+#togglePanel::-webkit-scrollbar{display:none}
+.tog-group{display:flex;flex-direction:column;gap:0;}
+.tog{padding:0.35rem 0.7rem;background:var(--panel);border:1px solid var(--border);color:var(--dim);font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:0.15em;cursor:pointer;transition:all 0.2s;text-align:left;display:flex;align-items:center;justify-content:space-between;width:140px;border-radius:6px;margin-bottom:2px;}
+.tog.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px rgba(0,255,231,0.15)}
+.tog:hover{border-color:rgba(0,255,231,0.4);color:var(--text)}
+.tog-arrow{font-size:0.45rem;opacity:0.5;transition:transform 0.2s;display:inline-block;}
+.tog-group.open .tog-arrow{transform:rotate(90deg);}
+.sub-panel{display:none;flex-direction:column;gap:0;border-left:1px solid rgba(0,255,231,0.15);margin-left:8px;padding-left:0;overflow:hidden;}
+.tog-group.open .sub-panel{display:flex;}
+.sub-tog{padding:0.28rem 0.6rem 0.28rem 0.9rem;background:rgba(5,12,28,0.7);border:none;border-bottom:1px solid rgba(13,33,55,0.6);color:var(--dim);font-family:'Orbitron',monospace;font-size:0.42rem;letter-spacing:0.12em;cursor:pointer;transition:all 0.15s;text-align:left;width:132px;display:flex;align-items:center;gap:0.4rem;}
+.sub-tog:last-child{border-bottom:none;}
+.sub-tog.on{color:var(--accent);background:rgba(0,255,231,0.04);}
+.sub-tog:hover{color:var(--text);background:rgba(0,255,231,0.06);}
+.sub-pip{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.tog-divider{height:1px;background:rgba(0,255,231,0.06);margin:0.2rem 0;}
+
+/* ── Switch Overlay ── */
+#switchOverlay{
+  position:absolute;inset:0;z-index:25;
+  background:rgba(1,4,9,0.88);
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:1rem;
+}
+#switchOverlay.show{display:flex;}
+.sw-spinner{width:50px;height:50px;border:2px solid rgba(0,255,231,0.15);border-top-color:var(--accent);border-radius:50%;animation:swspin 0.6s linear infinite;}
+@keyframes swspin{to{transform:rotate(360deg)}}
+.sw-text{font-family:'Orbitron',monospace;font-size:0.6rem;letter-spacing:0.3em;color:var(--accent);}
+.sw-sub{font-family:'Rajdhani',sans-serif;font-size:0.75rem;letter-spacing:0.1em;color:var(--dim);max-width:220px;text-align:center;}
+
+/* ── iOS Dock Nav ── */
+#iosDock{
+  position:fixed;
+  left:50%;transform:translateX(-50%);
+  z-index:200;
+  display:flex;align-items:center;gap:10px;
+  padding:10px 18px;
+  background:rgba(10,20,35,0.55);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid rgba(0,255,231,0.12);
+  border-radius:28px;
+  box-shadow:0 4px 40px rgba(0,0,0,0.45),0 0 0 0.5px rgba(0,255,231,0.08) inset;
+  transition:top 0.35s cubic-bezier(0.34,1.56,0.64,1),bottom 0.35s cubic-bezier(0.34,1.56,0.64,1);
+}
+#iosDock.dock-bottom{bottom:18px;top:auto;}
+#iosDock.dock-top{top:18px;bottom:auto;}
+
+.dock-btn{
+  width:52px;height:52px;
+  border-radius:16px;
+  background:rgba(0,255,231,0.07);
+  border:1px solid rgba(0,255,231,0.15);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;
+  transition:all 0.2s;
+  color:var(--accent);
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  position:relative;
+  overflow:visible;
+}
+.dock-btn:hover,.dock-btn:active{
+  background:rgba(0,255,231,0.16);
+  border-color:rgba(0,255,231,0.45);
+  box-shadow:0 0 18px rgba(0,255,231,0.3);
+  transform:scale(1.08) translateY(-2px);
+}
+.dock-btn.active{
+  background:rgba(0,255,231,0.15);
+  border-color:var(--accent);
+  box-shadow:0 0 20px rgba(0,255,231,0.35);
+}
+.dock-btn svg{width:22px;height:22px;pointer-events:none;}
+.dock-label{font-family:'Orbitron',monospace;font-size:0.38rem;letter-spacing:0.12em;color:rgba(160,196,224,0.7);pointer-events:none;}
+.dock-separator{width:1px;height:36px;background:rgba(0,255,231,0.1);margin:0 2px;}
+
+/* Cam bubble badge */
+#camBubble{
+  position:absolute;top:-5px;right:-5px;
+  width:17px;height:17px;border-radius:50%;
+  background:var(--accent3);color:#010409;
+  font-family:'Orbitron',monospace;font-size:0.42rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+  z-index:1;
+}
+
+/* Flip btn spin */
+.dock-flip-icon{transition:transform 0.45s cubic-bezier(0.34,1.56,0.64,1);}
+.dock-flip-btn.spinning .dock-flip-icon{transform:rotate(180deg);}
+
+/* ── Settings Panel ── */
+#settingsPanel{
+  position:fixed;
+  left:50%;transform:translateX(-50%) translateY(20px);
+  z-index:190;
+  width:min(360px,92vw);
+  background:rgba(5,12,28,0.96);
+  border:1px solid rgba(0,255,231,0.2);
+  border-radius:20px;
+  backdrop-filter:blur(32px);
+  -webkit-backdrop-filter:blur(32px);
+  box-shadow:0 8px 60px rgba(0,0,0,0.6),0 0 0 0.5px rgba(0,255,231,0.06) inset;
+  padding:0 0 12px 0;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.22s,transform 0.22s;
+  max-height:80vh;overflow-y:auto;
+  scrollbar-width:none;
+}
+#settingsPanel::-webkit-scrollbar{display:none;}
+#settingsPanel.open{opacity:1;pointer-events:all;transform:translateX(-50%) translateY(0);}
+#settingsPanel.dock-bottom-mode{bottom:90px;top:auto;}
+#settingsPanel.dock-top-mode{top:90px;bottom:auto;}
+
+.sp-header{
+  padding:14px 18px 10px;
+  border-bottom:1px solid rgba(0,255,231,0.08);
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;
+  background:rgba(5,12,28,0.98);
+  border-radius:20px 20px 0 0;
+  z-index:1;
+}
+.sp-title{font-family:'Orbitron',monospace;font-size:0.65rem;letter-spacing:0.3em;color:var(--accent);}
+.sp-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;padding:0 4px;line-height:1;transition:color 0.2s;}
+.sp-close:hover{color:var(--accent2);}
+
+.sp-section{padding:10px 18px 4px;}
+.sp-section-title{font-family:'Orbitron',monospace;font-size:0.42rem;letter-spacing:0.3em;color:var(--dim);margin-bottom:8px;text-transform:uppercase;}
+
+.sp-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 0;
+  border-bottom:1px solid rgba(13,33,55,0.5);
+}
+.sp-row:last-child{border-bottom:none;}
+.sp-row-label{font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:0.15em;color:var(--text);}
+.sp-row-sub{font-size:0.42rem;color:var(--dim);margin-top:1px;}
+
+/* iOS Toggle */
+.ios-toggle{
+  width:44px;height:26px;
+  background:#1a2840;
+  border-radius:13px;
+  border:1px solid rgba(0,255,231,0.15);
+  cursor:pointer;
+  position:relative;
+  transition:background 0.25s,border-color 0.25s;
+  flex-shrink:0;
+}
+.ios-toggle.on{background:rgba(0,255,231,0.25);border-color:rgba(0,255,231,0.5);}
+.ios-toggle::after{
+  content:'';
+  position:absolute;
+  top:2px;left:2px;
+  width:20px;height:20px;
+  border-radius:50%;
+  background:#4a6080;
+  transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1),background 0.25s;
+}
+.ios-toggle.on::after{background:var(--accent);transform:translateX(18px);}
+
+/* Segment control for Top/Bottom */
+.seg-ctrl{
+  display:flex;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:2px;
+  border:1px solid rgba(0,255,231,0.12);
+  gap:2px;
+}
+.seg-btn{
+  padding:4px 12px;
+  border:none;background:transparent;
+  color:var(--dim);
+  font-family:'Orbitron',monospace;font-size:0.42rem;letter-spacing:0.1em;
+  cursor:pointer;border-radius:8px;
+  transition:all 0.2s;
+}
+.seg-btn.active{background:rgba(0,255,231,0.18);color:var(--accent);box-shadow:0 0 8px rgba(0,255,231,0.2);}
+
+/* Toggle expand groups in settings */
+.sp-tog-group{margin-bottom:0;}
+.sp-tog-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 0;
+  cursor:pointer;
+  border-bottom:1px solid rgba(13,33,55,0.5);
+  font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:0.15em;color:var(--text);
+  user-select:none;
+}
+.sp-tog-head:hover{color:var(--accent);}
+.sp-tog-arrow{font-size:0.4rem;opacity:0.5;transition:transform 0.2s;}
+.sp-tog-group.open .sp-tog-arrow{transform:rotate(90deg);}
+.sp-sub-rows{display:none;padding-left:12px;}
+.sp-tog-group.open .sp-sub-rows{display:block;}
+
+/* Persons Modal */
+#personsModal{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(1,4,9,0.85);
+  backdrop-filter:blur(8px);
+  display:none;align-items:center;justify-content:center;
+}
+#personsModal.open{display:flex;}
+.pm-box{
+  width:min(380px,94vw);
+  max-height:75vh;
+  background:rgba(5,12,28,0.98);
+  border:1px solid rgba(0,255,231,0.2);
+  border-radius:20px;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  box-shadow:0 8px 60px rgba(0,0,0,0.7);
+}
+.pm-header{
+  padding:14px 18px;
+  border-bottom:1px solid rgba(0,255,231,0.08);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
+}
+.pm-title{font-family:'Orbitron',monospace;font-size:0.65rem;letter-spacing:0.3em;color:var(--accent);}
+.pm-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;line-height:1;transition:color 0.2s;}
+.pm-close:hover{color:var(--accent2);}
+.pm-list{overflow-y:auto;padding:8px 0;flex:1;scrollbar-width:thin;scrollbar-color:rgba(0,255,231,0.2) transparent;}
+.pm-empty{padding:24px;text-align:center;font-family:'Orbitron',monospace;font-size:0.5rem;color:var(--dim);}
+.pm-person{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 18px;
+  border-bottom:1px solid rgba(13,33,55,0.4);
+  transition:background 0.15s;
+}
+.pm-person:last-child{border-bottom:none;}
+.pm-person:hover{background:rgba(0,255,231,0.03);}
+.pm-avatar{width:46px;height:46px;border-radius:10px;border:1px solid rgba(0,255,231,0.3);object-fit:cover;flex-shrink:0;background:#0a141e;}
+.pm-info{flex:1;min-width:0;}
+.pm-name{font-family:'Orbitron',monospace;font-size:0.55rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pm-meta{font-size:0.42rem;color:var(--dim);margin-top:2px;}
+.pm-del{background:rgba(255,45,107,0.1);border:1px solid rgba(255,45,107,0.3);color:var(--accent2);cursor:pointer;border-radius:8px;padding:5px 10px;font-size:0.55rem;transition:all 0.2s;}
+.pm-del:hover{background:rgba(255,45,107,0.25);border-color:var(--accent2);}
+
+/* cam label (small, inside tracker) */
+#camLabel{
+  position:fixed;
+  z-index:30;
+  background:var(--panel);border:1px solid var(--border);
+  padding:0.22rem 0.55rem;
+  font-family:'Orbitron',monospace;font-size:0.42rem;letter-spacing:0.2em;
+  pointer-events:none;backdrop-filter:blur(8px);
+  transition:color 0.3s,border-color 0.3s;
+  left:14px;
+}
+#camLabel.front{color:var(--accent);border-color:rgba(0,255,231,0.3);}
+#camLabel.back{color:var(--accent3);border-color:rgba(255,195,0,0.3);}
+#camLabel.label-top{top:62px;}
+#camLabel.label-bottom{bottom:90px;}
+
+/* ════════════════════════════════════════════
+   FACE RECOGNITION — Registration Popup
+   ════════════════════════════════════════════ */
+#faceRegPopup {
+  display:none;
+  position:fixed;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  z-index:600;
+  width:360px;
+  background:rgba(5,12,28,0.97);
+  border:1px solid var(--accent);
+  clip-path:polygon(0 0,calc(100% - 20px) 0,100% 20px,100% 100%,20px 100%,0 calc(100% - 20px));
+  box-shadow:0 0 60px rgba(0,255,231,0.2);
+  backdrop-filter:blur(16px);
+}
+#faceRegPopup.active{display:block;}
+.frp-header{
+  padding:1rem 1.2rem 0.8rem;
+  border-bottom:1px solid rgba(0,255,231,0.1);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.frp-title{font-family:'Orbitron',monospace;font-size:0.6rem;letter-spacing:0.3em;color:var(--accent);}
+.frp-uid{font-family:'Orbitron',monospace;font-size:0.55rem;color:var(--accent3);}
+.frp-snapshot{
+  width:100%;height:160px;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+  background:#000;
+  position:relative;
+}
+.frp-snapshot canvas{max-height:160px;max-width:100%;object-fit:contain;}
+.frp-snap-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(0deg, rgba(0,255,231,0.08) 0%, transparent 50%);
+  pointer-events:none;
+}
+.frp-scanline{
+  position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  animation:scanDown 2s linear infinite;
+}
+@keyframes scanDown{0%{top:0}100%{top:100%}}
+.frp-body{padding:1rem 1.2rem;}
+.frp-label{font-family:'Orbitron',monospace;font-size:0.45rem;letter-spacing:0.25em;color:var(--dim);margin-bottom:0.4rem;display:block;}
+.frp-input{
+  width:100%;
+  background:rgba(0,255,231,0.04);
+  border:1px solid rgba(0,255,231,0.2);
+  color:var(--accent);
+  font-family:'Orbitron',monospace;
+  font-size:0.7rem;
+  letter-spacing:0.1em;
+  padding:0.6rem 0.8rem;
+  outline:none;
+  margin-bottom:0.8rem;
+  transition:border-color 0.2s;
+}
+.frp-input:focus{border-color:var(--accent);box-shadow:0 0 12px rgba(0,255,231,0.15);}
+.frp-input::placeholder{color:var(--dim);font-size:0.6rem;}
+.frp-attrs{
+  font-family:'Rajdhani',sans-serif;font-size:0.7rem;
+  color:var(--dim);margin-bottom:0.8rem;
+  display:grid;grid-template-columns:1fr 1fr;gap:0.2rem 0.8rem;
+}
+.frp-attr{display:flex;justify-content:space-between;}
+.frp-attr span:last-child{color:var(--text);}
+.frp-btns{display:flex;gap:0.6rem;}
+.frp-btn{
+  flex:1;padding:0.65rem;
+  font-family:'Orbitron',monospace;font-size:0.55rem;letter-spacing:0.15em;
+  border:1px solid;cursor:pointer;
+  clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));
+  transition:all 0.2s;
+}
+.frp-btn-save{background:var(--accent);border-color:var(--accent);color:#010409;font-weight:700;}
+.frp-btn-save:hover{box-shadow:0 0 20px rgba(0,255,231,0.5);}
+.frp-btn-cancel{background:transparent;border-color:var(--dim);color:var(--dim);}
+.frp-btn-cancel:hover{border-color:var(--accent2);color:var(--accent2);}
+.frp-status{
+  font-family:'Orbitron',monospace;font-size:0.5rem;letter-spacing:0.2em;
+  color:var(--accent3);text-align:center;margin-top:0.5rem;min-height:1rem;
+}
+
+/* Face recognition overlay */
+#faceidCanvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:16;pointer-events:none;
+}
+#faceidCanvas.mirror{transform:scaleX(-1);}
+
+/* Notification toast */
+#faceToast{
+  position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+  background:rgba(5,12,28,0.95);border:1px solid var(--accent);
+  color:var(--accent);font-family:'Orbitron',monospace;
+  font-size:0.55rem;letter-spacing:0.2em;
+  padding:0.6rem 1.2rem;
+  z-index:700;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.3s;
+  clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));
+}
+#faceToast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<!-- Permission Screen -->
+<div id="permScreen">
+  <div class="perm-glow"></div>
+  <div class="perm-wrap">
+    <div class="perm-box">
+      <div class="brand-tag">AAYAN SYSTEMS</div>
+      <div class="perm-scan-ring">
+        <div class="ring ring1"></div><div class="ring ring2"></div><div class="ring ring3"></div>
+        <svg class="ring-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </div>
+      <div class="perm-title">Aayan Body<br>Tracker</div>
+      <div class="perm-version">VERSION 4.0 — HOLISTIC + FACE-ID ENGINE</div>
+      <div class="perm-desc">Full-body neural tracking + real-time face recognition.<br/>Detects &amp; identifies faces, hands, body — stores identity in browser.</div>
+      <div class="feat-grid">
+        <div class="feat"><div class="feat-pip" style="background:#00ffe7"></div>468pt Face Mesh</div>
+        <div class="feat"><div class="feat-pip" style="background:#40c4ff"></div>21pt Hand Joints</div>
+        <div class="feat"><div class="feat-pip" style="background:#ffc300"></div>Face Recognition</div>
+        <div class="feat"><div class="feat-pip" style="background:#ff8c00"></div>Identity Storage</div>
+        <div class="feat"><div class="feat-pip" style="background:#ff2d6b"></div>Multi-face Tracking</div>
+        <div class="feat"><div class="feat-pip" style="background:#69ff47"></div>Live Name Labels</div>
+        <div class="feat"><div class="feat-pip" style="background:#b388ff"></div>Full Body Skeleton</div>
+        <div class="feat"><div class="feat-pip" style="background:#e8f4ff"></div>IndexedDB Storage</div>
+      </div>
+      <div class="model-badge">ENGINE: <span>MediaPipe + face-api.js</span> &nbsp;|&nbsp; STORAGE: <span>IndexedDB</span> &nbsp;|&nbsp; PTS: <span>543+</span></div>
+      <button class="btn-cam" onclick="startTracking()">⬡ &nbsp; INITIALISE CAMERA</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Screen -->
+<div id="loadScreen">
+  <div class="load-title">Aayan Body Tracker v4.0</div>
+  <div class="load-pct" id="loadPct">0%</div>
+  <div class="load-bar-outer"><div class="load-bar-inner" id="loadBar"></div></div>
+  <div class="load-msg" id="loadMsg">Initialising</div>
+  <div class="load-dots"><span>●</span><span>●</span><span>●</span></div>
+</div>
+
+<!-- Main Tracker UI -->
+<div id="trackerUI">
+  <video id="videoEl" autoplay playsinline muted></video>
+  <canvas id="mainCanvas"></canvas>
+  <canvas id="faceidCanvas"></canvas>
+
+  <!-- HDR Top Panel -->
+  <div class="hdr" id="hdrPanel">
+    <div class="hdr-left">
+      <div class="hdr-name">AAYAN <span>TRACKER</span></div>
+      <div class="hdr-ver">v4.0 — HOLISTIC + FACE-ID</div>
+    </div>
+    <div class="hdr-center"><div class="live-dot"></div>LIVE</div>
+    <div class="hdr-right" id="timeDisplay">00:00:00</div>
+  </div>
+
+  <div class="bracket tl"></div>
+  <div class="bracket tr"></div>
+  <div class="bracket bl"></div>
+  <div class="bracket br"></div>
+
+  <!-- FPS Panel -->
+  <div id="fpsPanel" class="panel-bottom">
+    <div class="fps-big" id="fpsVal">--</div>
+    <div class="fps-label">FPS</div>
+  </div>
+
+  <!-- Toggle Panel -->
+  <div id="togglePanel" class="panel-bottom">
+    <div class="tog-group" id="grpFace">
+      <button class="tog on" id="togFace" onclick="toggleGroup('face')"><span>◈ FACE</span><span class="tog-arrow">▶</span></button>
+      <div class="sub-panel">
+        <button class="sub-tog on" id="togFaceMesh" onclick="toggleSub('faceMesh')"><span class="sub-pip" style="background:#00ffe7"></span>MESH DOTS</button>
+        <button class="sub-tog on" id="togFaceContour" onclick="toggleSub('faceContour')"><span class="sub-pip" style="background:#00ffe7"></span>FACE OUTLINE</button>
+        <button class="sub-tog on" id="togFaceEyes" onclick="toggleSub('faceEyes')"><span class="sub-pip" style="background:#00cfff"></span>EYES + IRIS</button>
+        <button class="sub-tog on" id="togFaceBrows" onclick="toggleSub('faceBrows')"><span class="sub-pip" style="background:#00ffe7"></span>EYEBROWS</button>
+        <button class="sub-tog on" id="togFaceNose" onclick="toggleSub('faceNose')"><span class="sub-pip" style="background:#00ffe7"></span>NOSE</button>
+        <button class="sub-tog on" id="togFaceLips" onclick="toggleSub('faceLips')"><span class="sub-pip" style="background:#ff2d6b"></span>LIPS</button>
+        <button class="sub-tog on" id="togFaceCheeks" onclick="toggleSub('faceCheeks')"><span class="sub-pip" style="background:#00ffe7"></span>CHEEKS</button>
+      </div>
+    </div>
+    <div class="tog-group" id="grpHands">
+      <button class="tog on" id="togHands" onclick="toggleGroup('hands')"><span>◈ HANDS</span><span class="tog-arrow">▶</span></button>
+      <div class="sub-panel">
+        <button class="sub-tog on" id="togHandLeft" onclick="toggleSub('handLeft')"><span class="sub-pip" style="background:#b388ff"></span>LEFT HAND</button>
+        <button class="sub-tog on" id="togHandRight" onclick="toggleSub('handRight')"><span class="sub-pip" style="background:#40c4ff"></span>RIGHT HAND</button>
+      </div>
+    </div>
+    <div class="tog-group" id="grpBody">
+      <button class="tog on" id="togBody" onclick="toggleGroup('body')"><span>◈ BODY</span><span class="tog-arrow">▶</span></button>
+      <div class="sub-panel">
+        <button class="sub-tog on" id="togBodyChest" onclick="toggleSub('bodyChest')"><span class="sub-pip" style="background:#ffc300"></span>CHEST</button>
+        <button class="sub-tog on" id="togBodyBelly" onclick="toggleSub('bodyBelly')"><span class="sub-pip" style="background:#ff8c00"></span>BELLY</button>
+        <button class="sub-tog on" id="togBodyArms" onclick="toggleSub('bodyArms')"><span class="sub-pip" style="background:#b388ff"></span>ARMS</button>
+        <button class="sub-tog on" id="togBodyLegs" onclick="toggleSub('bodyLegs')"><span class="sub-pip" style="background:#ff2d6b"></span>LEGS</button>
+        <button class="sub-tog on" id="togBodyFeet" onclick="toggleSub('bodyFeet')"><span class="sub-pip" style="background:#69ff47"></span>FEET + TOES</button>
+      </div>
+    </div>
+    <div class="tog-divider"></div>
+    <button class="tog on" id="togGlow" onclick="toggleFlat('glow')"><span>◈ GLOW</span></button>
+    <button class="tog on" id="togLabels" onclick="toggleFlat('labels')"><span>◈ LABELS</span></button>
+    <button class="tog on" id="togCamera" onclick="toggleFlat('camera')"><span>◈ CAMERA</span></button>
+  </div>
+
+  <!-- Stats Panel -->
+  <div id="statsPanel" class="panel-bottom">
+    <div class="panel-title">Tracking Stats</div>
+    <div class="stat-row"><span class="stat-label">Faces</span><span class="stat-val" id="sFaces">0</span></div>
+    <div class="stat-row"><span class="stat-label">L. Hand pts</span><span class="stat-val" id="sLHand">0</span></div>
+    <div class="stat-row"><span class="stat-label">R. Hand pts</span><span class="stat-val" id="sRHand">0</span></div>
+    <div class="stat-row"><span class="stat-label">Pose pts</span><span class="stat-val" id="sPose">0</span></div>
+    <div class="stat-row"><span class="stat-label">Total LM</span><span class="stat-val" id="sTotal">0</span></div>
+    <div class="stat-row"><span class="stat-label">Known IDs</span><span class="stat-val" id="sKnown">0</span></div>
+    <div class="confidence-bar">
+      <div class="conf-label">CONFIDENCE</div>
+      <div class="conf-row"><div class="conf-name">Face</div><div class="conf-track"><div class="conf-fill" id="cFace" style="background:#00ffe7;width:0%"></div></div></div>
+      <div class="conf-row"><div class="conf-name">Pose</div><div class="conf-track"><div class="conf-fill" id="cPose" style="background:#ffc300;width:0%"></div></div></div>
+      <div class="conf-row"><div class="conf-name">Hands</div><div class="conf-track"><div class="conf-fill" id="cHands" style="background:#40c4ff;width:0%"></div></div></div>
+    </div>
+    <div class="emotion-row">
+      <div class="emotion-label">◈ EMOTION</div>
+      <div class="emotion-val" id="emotionVal">— NO FACE —</div>
+    </div>
+  </div>
+
+  <!-- Region Map / Legend -->
+  <div id="legend" class="panel-bottom">
+    <div class="leg-title">Region Map</div>
+    <div class="leg-grid">
+      <div class="leg-item"><div class="leg-pip" style="background:#00ffe7"></div>Face mesh</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#00cfff"></div>Eyes</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff2d6b"></div>Lips</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#b388ff"></div>Left hand</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#40c4ff"></div>Right hand</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ffc300"></div>Chest</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff8c00"></div>Belly</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff2d6b"></div>Thighs</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#ff6e40"></div>Shins</div>
+      <div class="leg-item"><div class="leg-pip" style="background:#69ff47"></div>Feet+Toes</div>
+    </div>
+  </div>
+
+  <!-- Model Badge -->
+  <div id="modelBadge" class="badge-bottom"><span>MediaPipe Holistic + face-api.js</span> ENGINE<br/>AAYAN SYSTEMS © 2026</div>
+
+  <!-- Cam label -->
+  <div id="camLabel" class="front label-bottom">FRONT CAM</div>
+
+  <!-- Persons panel (legacy, hidden – replaced by modal) -->
+  <div id="personsPanel"></div>
+
+  <!-- Switch Overlay -->
+  <div id="switchOverlay">
+    <div class="sw-spinner"></div>
+    <div class="sw-text">SWITCHING CAMERA</div>
+    <div class="sw-sub" id="swSub">Please wait...</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     iOS DOCK (always visible)
+═══════════════════════════════════ -->
+<div id="iosDock" class="dock-bottom">
+  <!-- UI button -->
+  <button class="dock-btn" id="dockUiBtn" onclick="toggleUIVisibility()" title="UI">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3"/>
+      <path d="M3 9h18M9 21V9"/>
+    </svg>
+    <span class="dock-label">UI</span>
+  </button>
+
+  <div class="dock-separator"></div>
+
+  <!-- Settings button -->
+  <button class="dock-btn" id="dockSettingsBtn" onclick="toggleSettingsPanel()" title="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+    </svg>
+    <span class="dock-label">SETTINGS</span>
+  </button>
+
+  <div class="dock-separator"></div>
+
+  <!-- Camera Flip button -->
+  <button class="dock-btn dock-flip-btn" id="dockFlipBtn" onclick="flipCamera()" title="Flip Camera">
+    <div id="camBubble">?</div>
+    <svg class="dock-flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 7h-3a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/>
+      <circle cx="12" cy="13" r="3.2"/>
+      <path d="M7.5 4 5 6.5 7.5 9" stroke-width="1.3"/>
+      <path d="M5 6.5H11" stroke-width="1.3"/>
+      <path d="M16.5 4 19 6.5 16.5 9" stroke-width="1.3"/>
+      <path d="M19 6.5H13" stroke-width="1.3"/>
+    </svg>
+    <span class="dock-label">CAMERA</span>
+  </button>
+</div>
+
+<!-- ═══════════════════════════════════
+     SETTINGS PANEL
+═══════════════════════════════════ -->
+<div id="settingsPanel" class="dock-bottom-mode">
+  <div class="sp-header">
+    <span class="sp-title">◈ SETTINGS</span>
+    <button class="sp-close" onclick="toggleSettingsPanel()">✕</button>
+  </div>
+
+  <!-- Panel Visibility Section -->
+  <div class="sp-section">
+    <div class="sp-section-title">Panels</div>
+
+    <div class="sp-row">
+      <div><div class="sp-row-label">TOGGLE PANEL</div></div>
+      <div class="ios-toggle on" id="st-togglePanel" onclick="spToggle('togglePanel')"></div>
+    </div>
+    <div class="sp-row">
+      <div><div class="sp-row-label">REGION MAP</div></div>
+      <div class="ios-toggle on" id="st-regionMap" onclick="spToggle('regionMap')"></div>
+    </div>
+    <div class="sp-row">
+      <div><div class="sp-row-label">TRACKING STATS</div></div>
+      <div class="ios-toggle on" id="st-trackingStats" onclick="spToggle('trackingStats')"></div>
+    </div>
+    <div class="sp-row">
+      <div><div class="sp-row-label">TOP / HDR PANEL</div></div>
+      <div class="ios-toggle on" id="st-hdrPanel" onclick="spToggle('hdrPanel')"></div>
+    </div>
+    <div class="sp-row">
+      <div><div class="sp-row-label">MODEL BADGE</div></div>
+      <div class="ios-toggle on" id="st-modelBadge" onclick="spToggle('modelBadge')"></div>
+    </div>
+    <div class="sp-row">
+      <div><div class="sp-row-label">TOGGLE PERSON BTN</div></div>
+      <div class="ios-toggle on" id="st-personBtn" onclick="spToggle('personBtn')"></div>
+    </div>
+  </div>
+
+  <!-- Tracker Toggles Section -->
+  <div class="sp-section">
+    <div class="sp-section-title">Tracker Overlays</div>
+
+    <div class="sp-tog-group" id="spGrpFace">
+      <div class="sp-tog-head" onclick="spToggleGroup('spGrpFace')">
+        <span>◈ FACE</span><span class="sp-tog-arrow">▶</span>
+      </div>
+      <div class="sp-sub-rows">
+        <div class="sp-row"><div class="sp-row-label">MESH DOTS</div><div class="ios-toggle on" id="spt-faceMesh" onclick="toggleSub('faceMesh');syncSpToggle('faceMesh')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">FACE OUTLINE</div><div class="ios-toggle on" id="spt-faceContour" onclick="toggleSub('faceContour');syncSpToggle('faceContour')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">EYES + IRIS</div><div class="ios-toggle on" id="spt-faceEyes" onclick="toggleSub('faceEyes');syncSpToggle('faceEyes')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">EYEBROWS</div><div class="ios-toggle on" id="spt-faceBrows" onclick="toggleSub('faceBrows');syncSpToggle('faceBrows')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">NOSE</div><div class="ios-toggle on" id="spt-faceNose" onclick="toggleSub('faceNose');syncSpToggle('faceNose')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">LIPS</div><div class="ios-toggle on" id="spt-faceLips" onclick="toggleSub('faceLips');syncSpToggle('faceLips')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">CHEEKS</div><div class="ios-toggle on" id="spt-faceCheeks" onclick="toggleSub('faceCheeks');syncSpToggle('faceCheeks')"></div></div>
+      </div>
+    </div>
+
+    <div class="sp-tog-group" id="spGrpHands">
+      <div class="sp-tog-head" onclick="spToggleGroup('spGrpHands')">
+        <span>◈ HANDS</span><span class="sp-tog-arrow">▶</span>
+      </div>
+      <div class="sp-sub-rows">
+        <div class="sp-row"><div class="sp-row-label">LEFT HAND</div><div class="ios-toggle on" id="spt-handLeft" onclick="toggleSub('handLeft');syncSpToggle('handLeft')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">RIGHT HAND</div><div class="ios-toggle on" id="spt-handRight" onclick="toggleSub('handRight');syncSpToggle('handRight')"></div></div>
+      </div>
+    </div>
+
+    <div class="sp-tog-group" id="spGrpBody">
+      <div class="sp-tog-head" onclick="spToggleGroup('spGrpBody')">
+        <span>◈ BODY</span><span class="sp-tog-arrow">▶</span>
+      </div>
+      <div class="sp-sub-rows">
+        <div class="sp-row"><div class="sp-row-label">CHEST</div><div class="ios-toggle on" id="spt-bodyChest" onclick="toggleSub('bodyChest');syncSpToggle('bodyChest')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">BELLY</div><div class="ios-toggle on" id="spt-bodyBelly" onclick="toggleSub('bodyBelly');syncSpToggle('bodyBelly')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">ARMS</div><div class="ios-toggle on" id="spt-bodyArms" onclick="toggleSub('bodyArms');syncSpToggle('bodyArms')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">LEGS</div><div class="ios-toggle on" id="spt-bodyLegs" onclick="toggleSub('bodyLegs');syncSpToggle('bodyLegs')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">FEET + TOES</div><div class="ios-toggle on" id="spt-bodyFeet" onclick="toggleSub('bodyFeet');syncSpToggle('bodyFeet')"></div></div>
+      </div>
+    </div>
+
+    <div class="sp-tog-group" id="spGrpGlow">
+      <div class="sp-tog-head" onclick="spToggleGroup('spGrpGlow')">
+        <span>◈ GLOW</span><span class="sp-tog-arrow">▶</span>
+      </div>
+      <div class="sp-sub-rows">
+        <div class="sp-row"><div class="sp-row-label">GLOW EFFECT</div><div class="ios-toggle on" id="spt-glow" onclick="toggleFlat('glow');syncSpToggle('glow')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">POINT LABELS</div><div class="ios-toggle on" id="spt-labels" onclick="toggleFlat('labels');syncSpToggle('labels')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">CAMERA FEED</div><div class="ios-toggle on" id="spt-camera" onclick="toggleFlat('camera');syncSpToggle('camera')"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav Bar Alignment -->
+  <div class="sp-section">
+    <div class="sp-section-title">Nav Bar Alignment</div>
+    <div class="sp-row">
+      <div class="sp-row-label">POSITION</div>
+      <div class="seg-ctrl">
+        <button class="seg-btn" id="segTop" onclick="setNavPosition('top')">TOP</button>
+        <button class="seg-btn active" id="segBottom" onclick="setNavPosition('bottom')">BOTTOM</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Persons Button in Settings -->
+  <div class="sp-section">
+    <div class="sp-section-title">Face Recognition</div>
+    <div class="sp-row" style="cursor:pointer;" onclick="openPersonsModal()">
+      <div>
+        <div class="sp-row-label">◈ PERSONS DATABASE</div>
+        <div class="sp-row-sub">View &amp; manage registered faces</div>
+      </div>
+      <div style="color:var(--accent);font-size:0.8rem;">›</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     PERSONS MODAL
+═══════════════════════════════════ -->
+<div id="personsModal">
+  <div class="pm-box">
+    <div class="pm-header">
+      <div class="pm-title">◈ REGISTERED PERSONS <span id="pmCount" style="color:var(--accent3)"></span></div>
+      <button class="pm-close" onclick="closePersonsModal()">✕</button>
+    </div>
+    <div class="pm-list" id="pmList">
+      <div class="pm-empty">No persons registered yet.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Face Registration Popup -->
+<div id="faceRegPopup">
+  <div class="frp-header">
+    <div class="frp-title">◈ NEW FACE DETECTED</div>
+    <div class="frp-uid" id="frpUid">UID: ------</div>
+  </div>
+  <div class="frp-snapshot">
+    <canvas id="frpSnap"></canvas>
+    <div class="frp-snap-overlay"></div>
+    <div class="frp-scanline"></div>
+  </div>
+  <div class="frp-body">
+    <label class="frp-label">ENTER NAME</label>
+    <input type="text" class="frp-input" id="frpNameInput" placeholder="Type name here..." maxlength="32" />
+    <div class="frp-attrs" id="frpAttrs"></div>
+    <div class="frp-btns">
+      <button class="frp-btn frp-btn-save" onclick="saveFacePerson()">⬡ SAVE</button>
+      <button class="frp-btn frp-btn-cancel" onclick="dismissRegPopup()">SKIP</button>
+    </div>
+    <div class="frp-status" id="frpStatus"></div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="faceToast"></div>
+
+<!-- face-api.js -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// AAYAN BODY TRACKER v4.0 — Holistic + Face Recognition
+// Face data stored in IndexedDB. face-api.js for real recognition.
+// ══════════════════════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+const video   = $('videoEl');
+const canvas  = $('mainCanvas');
+const ctx     = canvas.getContext('2d');
+const faceCanvas = $('faceidCanvas');
+const faceCtx    = faceCanvas.getContext('2d');
+
+// ── State ─────────────────────────────────────────────────────
+let allCams    = [];
+let camIdx     = 0;
+let isSwitching= false;
+let holistic   = null;
+let busy       = false;
+let lastRes    = null;
+let isMirrored = true;
+
+// ── Feature toggles ───────────────────────────────────────────
+const SHOW={
+  face:true,hands:true,body:true,
+  glow:true,labels:true,camera:true,
+  faceMesh:true,faceContour:true,faceEyes:true,
+  faceBrows:true,faceNose:true,faceLips:true,faceCheeks:true,
+  handLeft:true,handRight:true,
+  bodyChest:true,bodyBelly:true,bodyArms:true,bodyLegs:true,bodyFeet:true,
+};
+function toggleGroup(g){const el=$('grp'+g[0].toUpperCase()+g.slice(1));if(el)el.classList.toggle('open');}
+function toggleSub(k){SHOW[k]=!SHOW[k];const b=$('tog'+k[0].toUpperCase()+k.slice(1));if(b)b.classList.toggle('on',SHOW[k]);}
+function toggleFlat(k){SHOW[k]=!SHOW[k];const b=$('tog'+k[0].toUpperCase()+k.slice(1));if(b)b.classList.toggle('on',SHOW[k]);if(k==='camera')video.style.opacity=SHOW.camera?'1':'0';}
+
+const C={face:'#00ffe7',eye:'#00cfff',lip:'#ff2d6b',lhand:'#b388ff',rhand:'#40c4ff',chest:'#ffc300',belly:'#ff8c00',lthigh:'#ff2d6b',rthigh:'#ff2d6b',lshin:'#ff6e40',rshin:'#ff6e40',lfoot:'#69ff47',rfoot:'#69ff47',spine:'#e8f4ff',larm:'#b388ff',rarm:'#40c4ff',thumb:'#ffc300',index:'#69ff47',middle:'#40c4ff',ring:'#ff8c00',pinky:'#ff2d6b'};
+
+class Smoother{
+  constructor(a=0.65){this.a=a;this.p=null;}
+  smooth(lms){
+    if(!lms)return null;
+    const a=this.a,b=1-a;
+    if(!this.p){this.p=[...lms];return lms;}
+    const o=lms.map((lm,i)=>{const p=this.p[i];if(!p)return lm;return{x:a*lm.x+b*p.x,y:a*lm.y+b*p.y,z:a*(lm.z||0)+b*(p.z||0),visibility:lm.visibility};});
+    this.p=o;return o;
+  }
+  reset(){this.p=null;}
+}
+const smoF=new Smoother(0.6),smoP=new Smoother(0.55),smoL=new Smoother(0.65),smoR=new Smoother(0.65);
+
+// ══════════════════════════════════════════════════════════════
+// INDEXEDDB — Face Identity Storage
+// ══════════════════════════════════════════════════════════════
+let db = null;
+const DB_NAME = 'AayanFaceDB';
+const DB_VER  = 1;
+
+function openDB(){
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('persons')){
+        d.createObjectStore('persons',{keyPath:'uid'});
+      }
+    };
+    req.onsuccess = e => { db=e.target.result; res(db); };
+    req.onerror   = e => rej(e);
+  });
+}
+
+function dbPut(person){
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('persons','readwrite');
+    tx.objectStore('persons').put(person);
+    tx.oncomplete = () => res();
+    tx.onerror    = e => rej(e);
+  });
+}
+
+function dbGetAll(){
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('persons','readonly');
+    const req = tx.objectStore('persons').getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror   = e => rej(e);
+  });
+}
+
+function dbDelete(uid){
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('persons','readwrite');
+    tx.objectStore('persons').delete(uid);
+    tx.oncomplete = () => res();
+    tx.onerror    = e => rej(e);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// FACE RECOGNITION STATE
+// ══════════════════════════════════════════════════════════════
+let faceApiReady  = false;
+let knownPersons  = [];   // [{uid, name, descriptor(Float32Array), snapshot(dataURL), attrs}]
+let detectedFaces = [];   // current frame face results with identity
+let pendingRegFace = null; // face being registered
+
+// Similarity threshold — lower = stricter match
+const FACE_MATCH_THRESHOLD = 0.45;
+
+// Cooldown: don't re-popup for same unknown face too quickly
+let unknownCooldown = {};   // uid -> timestamp
+const UNKNOWN_COOLDOWN_MS = 8000;
+
+function genUID(){
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function loadFaceApiModels(){
+  // Use CDN-hosted models
+  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
+  try {
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+    faceApiReady = true;
+    console.log('[FaceAPI] Models loaded');
+  } catch(e) {
+    console.warn('[FaceAPI] CDN 1 failed, trying fallback...', e);
+    try {
+      const MODEL_URL2 = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL2);
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL2);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL2);
+      await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL2);
+      faceApiReady = true;
+      console.log('[FaceAPI] Models loaded from fallback');
+    } catch(e2) {
+      console.error('[FaceAPI] All model loads failed:', e2);
+    }
+  }
+}
+
+async function loadKnownPersons(){
+  knownPersons = await dbGetAll();
+  // Restore Float32Array from stored array
+  knownPersons.forEach(p => {
+    if(p.descriptor && !(p.descriptor instanceof Float32Array)){
+      p.descriptor = new Float32Array(Object.values(p.descriptor));
+    }
+  });
+  updatePersonsPanel();
+  $('sKnown').textContent = knownPersons.length;
+}
+
+// ══════════════════════════════════════════════════════════════
+// FACE DETECTION + RECOGNITION LOOP (runs every ~500ms)
+// ══════════════════════════════════════════════════════════════
+let faceDetectInterval = null;
+
+async function runFaceDetection(){
+  if(!faceApiReady || isSwitching || video.readyState < 2) return;
+  try {
+    const options = new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:0.4});
+    const results = await faceapi
+      .detectAllFaces(video, options)
+      .withFaceLandmarks(true)
+      .withFaceDescriptors()
+      .withFaceExpressions();
+
+    detectedFaces = results.map(r => {
+      const identity = matchFace(r.descriptor);
+      return { detection: r.detection, descriptor: r.descriptor, landmarks: r.landmarks, expressions: r.expressions, identity };
+    });
+
+    // For each unrecognised face, possibly show registration popup
+    for(const f of detectedFaces){
+      if(!f.identity){
+        const box = f.detection.box;
+        const key = Math.round(box.x/80)+'_'+Math.round(box.y/80); // rough spatial key
+        const now = Date.now();
+        if(!unknownCooldown[key] || (now - unknownCooldown[key]) > UNKNOWN_COOLDOWN_MS){
+          unknownCooldown[key] = now;
+          if(!$('faceRegPopup').classList.contains('active')){
+            showRegPopup(f);
+          }
+        }
+      }
+    }
+  } catch(e){ /* silently skip */ }
+}
+
+function matchFace(descriptor){
+  if(!knownPersons.length) return null;
+  let best = null, bestDist = Infinity;
+  for(const p of knownPersons){
+    if(!p.descriptor) continue;
+    const dist = faceapi.euclideanDistance(descriptor, p.descriptor);
+    if(dist < bestDist){ bestDist=dist; best=p; }
+  }
+  if(bestDist < FACE_MATCH_THRESHOLD) return { person: best, distance: bestDist };
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════
+// REGISTRATION POPUP
+// ══════════════════════════════════════════════════════════════
+let currentRegData = null;
+
+function showRegPopup(faceResult){
+  const uid = genUID();
+  const box = faceResult.detection.box;
+
+  // Snapshot the face from video
+  const snapCanvas = $('frpSnap');
+  const sc = snapCanvas.getContext('2d');
+  const pad = 30;
+  const sx = Math.max(0, box.x - pad);
+  const sy = Math.max(0, box.y - pad);
+  const sw = Math.min(video.videoWidth - sx, box.width + pad*2);
+  const sh = Math.min(video.videoHeight - sy, box.height + pad*2);
+  snapCanvas.width  = sw;
+  snapCanvas.height = sh;
+
+  // If mirrored, flip the snapshot horizontally
+  if(isMirrored){
+    sc.save();
+    sc.scale(-1,1);
+    sc.translate(-sw,0);
+    sc.drawImage(video, video.videoWidth - sx - sw, sy, sw, sh, 0, 0, sw, sh);
+    sc.restore();
+  } else {
+    sc.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+  }
+
+  // Analyse attributes from expressions
+  const expr = faceResult.expressions || {};
+  const topExpr = Object.entries(expr).sort((a,b)=>b[1]-a[1])[0];
+  const attrs = {
+    expression: topExpr ? topExpr[0] : 'neutral',
+    confidence: topExpr ? (topExpr[1]*100).toFixed(0)+'%' : '--',
+    faceW: Math.round(box.width)+'px',
+    faceH: Math.round(box.height)+'px',
+  };
+
+  // Landmarks analysis
+  const lms = faceResult.landmarks;
+  if(lms){
+    try {
+      const jaw = lms.getJawOutline();
+      const jawW = Math.abs(jaw[jaw.length-1].x - jaw[0].x);
+      const jawH = Math.abs(jaw[Math.floor(jaw.length/2)].y - jaw[0].y);
+      const ratio = (jawH/jawW).toFixed(2);
+      attrs.faceShape = ratio > 1.2 ? 'Oval' : ratio > 0.95 ? 'Round' : 'Wide';
+    } catch(e){}
+  }
+
+  // Populate popup
+  $('frpUid').textContent = 'UID: ' + uid;
+  $('frpNameInput').value = '';
+  $('frpStatus').textContent = '';
+
+  const attrHtml = Object.entries(attrs).map(([k,v])=>
+    `<div class="frp-attr"><span>${k}</span><span>${v}</span></div>`
+  ).join('');
+  $('frpAttrs').innerHTML = attrHtml;
+
+  currentRegData = {
+    uid,
+    descriptor: faceResult.descriptor,
+    snapshotDataURL: snapCanvas.toDataURL('image/jpeg', 0.85),
+    attrs,
+    timestamp: new Date().toISOString()
+  };
+
+  $('faceRegPopup').classList.add('active');
+  $('frpNameInput').focus();
+}
+
+function dismissRegPopup(){
+  $('faceRegPopup').classList.remove('active');
+  currentRegData = null;
+}
+
+async function saveFacePerson(){
+  if(!currentRegData) return;
+  const name = $('frpNameInput').value.trim();
+  if(!name){ $('frpStatus').textContent='⚠ ENTER A NAME FIRST'; return; }
+
+  $('frpStatus').textContent = 'SAVING...';
+
+  const person = {
+    uid:         currentRegData.uid,
+    name:        name,
+    descriptor:  Array.from(currentRegData.descriptor),
+    snapshot:    currentRegData.snapshotDataURL,
+    attrs:       currentRegData.attrs,
+    timestamp:   currentRegData.timestamp,
+    folder:      name.replace(/\s+/g,'-') + '-' + currentRegData.uid,
+  };
+
+  try {
+    await dbPut(person);
+    // Restore Float32Array for live matching
+    person.descriptor = new Float32Array(person.descriptor);
+    knownPersons.push(person);
+    updatePersonsPanel();
+    $('sKnown').textContent = knownPersons.length;
+    $('frpStatus').textContent = '✓ SAVED: ' + name;
+    showToast('✓ REGISTERED: ' + name.toUpperCase());
+    setTimeout(()=> dismissRegPopup(), 900);
+  } catch(e){
+    $('frpStatus').textContent = '✗ ERROR: ' + e.message;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// PERSONS MODAL
+// ══════════════════════════════════════════════════════════════
+function togglePersonsPanel(){} // legacy stub
+
+function openPersonsModal(){
+  updatePersonsModal();
+  $('personsModal').classList.add('open');
+  closeSettingsPanel();
+}
+
+function closePersonsModal(){
+  $('personsModal').classList.remove('open');
+}
+
+function updatePersonsModal(){
+  const list = $('pmList');
+  list.innerHTML = '';
+  const count = knownPersons.length;
+  $('pmCount'). textContent = count ? `(${count})` : '';
+  $('sKnown').textContent = count;
+
+  if(!count){
+    list.innerHTML = '<div class="pm-empty">No persons registered yet.<br><span style="opacity:0.5;font-size:0.42rem;">Faces will be auto-detected and offered for registration.</span></div>';
+    return;
+  }
+
+  knownPersons.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'pm-person';
+    div.innerHTML = `
+      <img class="pm-avatar" src="${p.snapshot||''}" onerror="this.style.display='none'">
+      <div class="pm-info">
+        <div class="pm-name">${p.name}</div>
+        <div class="pm-meta">UID: ${p.uid} &nbsp;·&nbsp; ${new Date(p.timestamp||0).toLocaleDateString()}</div>
+      </div>
+      <button class="pm-del" onclick="deletePerson('${p.uid}')">DELETE</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// Legacy updatePersonsPanel (keep sKnown in sync)
+function updatePersonsPanel(){
+  $('sKnown').textContent = knownPersons.length;
+}
+
+async function deletePerson(uid){
+  if(!confirm('Delete this person from recognition database?')) return;
+  await dbDelete(uid);
+  knownPersons = knownPersons.filter(p=>p.uid!==uid);
+  updatePersonsModal();
+  $('sKnown').textContent = knownPersons.length;
+  showToast('PERSON REMOVED');
+}
+
+// ══════════════════════════════════════════════════════════════
+// SETTINGS PERSISTENCE (localStorage)
+// ══════════════════════════════════════════════════════════════
+const LS_KEY = 'aayan_settings_v1';
+
+const SP = {
+  togglePanel:   true,
+  regionMap:     true,
+  trackingStats: true,
+  hdrPanel:      true,
+  modelBadge:    true,
+  personBtn:     true,
+  navPosition:   'bottom',
+  uiVisible:     true,
+};
+
+function loadSettings(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(LS_KEY)||'{}');
+    Object.assign(SP, saved);
+  }catch(e){}
+}
+
+function saveSettings(){
+  localStorage.setItem(LS_KEY, JSON.stringify(SP));
+}
+
+// ══════════════════════════════════════════════════════════════
+// SETTINGS UI — DOCK / PANELS
+// ══════════════════════════════════════════════════════════════
+function applySettings(){
+  const isBottom = SP.navPosition === 'bottom';
+
+  // Dock position
+  $('iosDock').className = isBottom ? 'dock-bottom' : 'dock-top';
+
+  // Settings panel position class
+  const sp = $('settingsPanel');
+  sp.className = sp.className.replace(/dock-(bottom|top)-mode/,'');
+  sp.classList.add(isBottom ? 'dock-bottom-mode' : 'dock-top-mode');
+
+  // Panel position classes
+  const posClass = isBottom ? 'panel-bottom' : 'panel-top';
+  ['togglePanel','statsPanel','legend','fpsPanel'].forEach(id=>{
+    const el = $(id);
+    if(el){ el.classList.remove('panel-top','panel-bottom'); el.classList.add(posClass); }
+  });
+
+  // Badge position
+  const badge = $('modelBadge');
+  if(badge){ badge.className = isBottom ? 'badge-bottom' : 'badge-top'; }
+
+  // camLabel position
+  const lbl = $('camLabel');
+  if(lbl){ lbl.classList.remove('label-top','label-bottom'); lbl.classList.add(isBottom ? 'label-bottom' : 'label-top'); }
+
+  // Segment btns
+  $('segTop').classList.toggle('active', SP.navPosition==='top');
+  $('segBottom').classList.toggle('active', SP.navPosition==='bottom');
+
+  // Panel visibility (only when UI is visible)
+  const uiOn = SP.uiVisible;
+  setElVisible('togglePanel',   uiOn && SP.togglePanel);
+  setElVisible('legend',        uiOn && SP.regionMap);
+  setElVisible('statsPanel',    uiOn && SP.trackingStats);
+  setElVisible('hdrPanel',      uiOn && SP.hdrPanel);
+  setElVisible('modelBadge',    uiOn && SP.modelBadge);
+  setElVisible('fpsPanel',      uiOn);
+  setElVisible('camLabel',      uiOn);
+
+  // Settings panel toggles sync
+  syncSettingToggle('togglePanel',   SP.togglePanel);
+  syncSettingToggle('regionMap',     SP.regionMap);
+  syncSettingToggle('trackingStats', SP.trackingStats);
+  syncSettingToggle('hdrPanel',      SP.hdrPanel);
+  syncSettingToggle('modelBadge',    SP.modelBadge);
+  syncSettingToggle('personBtn',     SP.personBtn);
+
+  // UI button appearance
+  const uiBtn = $('dockUiBtn');
+  if(uiBtn) uiBtn.classList.toggle('active', !uiOn);
+}
+
+function setElVisible(id, vis){
+  const el = $(id);
+  if(!el) return;
+  el.style.display = vis ? '' : 'none';
+}
+
+function syncSettingToggle(key, val){
+  const el = $('st-'+key);
+  if(el) el.classList.toggle('on', val);
+}
+
+function spToggle(key){
+  SP[key] = !SP[key];
+  saveSettings();
+  applySettings();
+}
+
+function spToggleGroup(id){
+  $(id).classList.toggle('open');
+}
+
+function setNavPosition(pos){
+  SP.navPosition = pos;
+  saveSettings();
+  applySettings();
+}
+
+let settingsOpen = false;
+function toggleSettingsPanel(){
+  settingsOpen = !settingsOpen;
+  $('settingsPanel').classList.toggle('open', settingsOpen);
+  $('dockSettingsBtn').classList.toggle('active', settingsOpen);
+}
+function closeSettingsPanel(){
+  settingsOpen = false;
+  $('settingsPanel').classList.remove('open');
+  $('dockSettingsBtn').classList.remove('active');
+}
+
+let uiHidden = false;
+function toggleUIVisibility(){
+  SP.uiVisible = !SP.uiVisible;
+  saveSettings();
+  applySettings();
+}
+
+// Sync tracker subtoggle with settings panel mirror
+function syncSpToggle(key){
+  const el = $('spt-'+key);
+  if(el) el.classList.toggle('on', SHOW[key]);
+  saveSettings();
+}
+
+// ══════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg){
+  const t = $('faceToast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// FACE ID OVERLAY DRAWING (on faceCanvas)
+// ══════════════════════════════════════════════════════════════
+function drawFaceIdOverlay(){
+  const W = faceCanvas.width  = video.videoWidth  || window.innerWidth;
+  const H = faceCanvas.height = video.videoHeight || window.innerHeight;
+  faceCtx.clearRect(0,0,W,H);
+
+  if(!detectedFaces.length) return;
+
+  const scaleX = W / (video.videoWidth || W);
+  const scaleY = H / (video.videoHeight || H);
+
+  for(const f of detectedFaces){
+    const box = f.detection.box;
+    let bx = box.x * scaleX;
+    let by = box.y * scaleY;
+    let bw = box.width * scaleX;
+    let bh = box.height * scaleY;
+
+    // Flip x for mirrored camera
+    if(isMirrored) bx = W - bx - bw;
+
+    const isKnown   = !!f.identity;
+    const label     = isKnown ? f.identity.person.name.toUpperCase() : 'UNKNOWN';
+    const uid       = isKnown ? f.identity.person.uid : '??????';
+    const boxColor  = isKnown ? '#00ffe7' : '#ff2d6b';
+    const textColor = isKnown ? '#00ffe7' : '#ff2d6b';
+
+    // Bounding box
+    faceCtx.save();
+    faceCtx.strokeStyle = boxColor;
+    faceCtx.lineWidth   = 2;
+    faceCtx.shadowColor = boxColor;
+    faceCtx.shadowBlur  = 12;
+    faceCtx.strokeRect(bx, by, bw, bh);
+    // Corner brackets
+    const cl = 14;
+    [[bx,by],[bx+bw,by],[bx,by+bh],[bx+bw,by+bh]].forEach(([cx,cy],i)=>{
+      faceCtx.beginPath();
+      faceCtx.moveTo(cx+(i%2===0?cl:-cl),cy);
+      faceCtx.lineTo(cx,cy);
+      faceCtx.lineTo(cx,cy+(i<2?cl:-cl));
+      faceCtx.stroke();
+    });
+    faceCtx.restore();
+
+    // Label above forehead
+    const FONT_SIZE = Math.max(14, Math.min(22, bw/5));
+    faceCtx.save();
+    faceCtx.font = `bold ${FONT_SIZE}px Orbitron, monospace`;
+    faceCtx.textAlign = 'center';
+
+    // Name/UNKNOWN text
+    const tx = bx + bw/2;
+    const ty = by - 8;
+    const nameW = faceCtx.measureText(label).width;
+    // Background pill
+    faceCtx.fillStyle = 'rgba(1,4,9,0.82)';
+    faceCtx.fillRect(tx - nameW/2 - 6, ty - FONT_SIZE - 2, nameW + 12, FONT_SIZE + 8);
+    // Text
+    faceCtx.fillStyle = textColor;
+    faceCtx.shadowColor = textColor;
+    faceCtx.shadowBlur = 10;
+    faceCtx.fillText(label, tx, ty);
+
+    // UID below name
+    const UID_SIZE = Math.max(9, FONT_SIZE * 0.55);
+    faceCtx.font = `${UID_SIZE}px Orbitron, monospace`;
+    faceCtx.fillStyle = 'rgba(1,4,9,0.75)';
+    const uidW = faceCtx.measureText('UID:'+uid).width;
+    faceCtx.fillRect(tx - uidW/2 - 4, ty + 2, uidW+8, UID_SIZE+4);
+    faceCtx.fillStyle = '#ffc300';
+    faceCtx.shadowColor = '#ffc300';
+    faceCtx.shadowBlur = 6;
+    faceCtx.fillText('UID:' + uid, tx, ty + UID_SIZE + 2);
+
+    // Confidence / match distance
+    if(isKnown){
+      const conf = ((1 - f.identity.distance) * 100).toFixed(0) + '% MATCH';
+      faceCtx.font = `${UID_SIZE}px Orbitron, monospace`;
+      faceCtx.fillStyle = 'rgba(1,4,9,0.75)';
+      const confW = faceCtx.measureText(conf).width;
+      faceCtx.fillRect(tx - confW/2 - 4, by + bh + 4, confW+8, UID_SIZE+4);
+      faceCtx.fillStyle = '#00ffe7';
+      faceCtx.shadowColor = '#00ffe7';
+      faceCtx.fillText(conf, tx, by + bh + UID_SIZE + 4);
+    }
+
+    faceCtx.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CAMERA
+// ══════════════════════════════════════════════════════════════
+async function enumerateCameras(){
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const vids  = devs.filter(d=>d.kind==='videoinput');
+  allCams = vids.map((d,i)=>{
+    const lbl = d.label.toLowerCase();
+    let isFront = true;
+    if(lbl.includes('back')||lbl.includes('rear')||lbl.includes('environment')||lbl.includes('main')||lbl.includes('ultra')||lbl.includes('wide')||lbl.includes('tele')){
+      isFront=false;
+    } else if(lbl.includes('front')||lbl.includes('user')||lbl.includes('selfie')||lbl.includes('facetime')){
+      isFront=true;
+    } else {
+      isFront=(i===0);
+    }
+    return {deviceId:d.deviceId,label:d.label||`Camera ${i+1}`,isFront};
+  });
+  allCams.sort((a,b)=>{if(a.isFront&&!b.isFront)return -1;if(!a.isFront&&b.isFront)return 1;return 0;});
+  $('camBubble').textContent=allCams.length;
+}
+
+async function openStream(index){
+  if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+  video.srcObject=null;
+  const cam=allCams[index];
+  let stream;
+  if(cam){
+    stream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:cam.deviceId},width:{ideal:1280},height:{ideal:720}},audio:false});
+  }else{
+    const fm=index===0?'user':'environment';
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:fm},audio:false});
+  }
+  video.srcObject=stream;
+  await new Promise(r=>{video.onloadedmetadata=r;});
+  await video.play();
+  const front=cam?cam.isFront:index===0;
+  isMirrored=front;
+  video.classList.toggle('mirror',front);
+  canvas.classList.toggle('mirror',front);
+  faceCanvas.classList.toggle('mirror',false); // face canvas never CSS-mirrored; we flip in draw
+  const lbl=$('camLabel');
+  lbl.textContent=front?'FRONT CAM':'BACK CAM';
+  // preserve top/bottom class, just change front/back
+  lbl.classList.remove('front','back');
+  lbl.classList.add(front?'front':'back');
+  smoF.reset();smoP.reset();smoL.reset();smoR.reset();
+  lastRes=null;busy=false;
+  detectedFaces=[];
+}
+
+async function flipCamera(){
+  if(isSwitching)return;
+  if(allCams.length<=1){await flipByFacingMode();return;}
+  isSwitching=true;
+  const btn=$('dockFlipBtn');
+  btn.classList.add('spinning');
+  setTimeout(()=>btn.classList.remove('spinning'),450);
+  const nextIdx=(camIdx+1)%allCams.length;
+  const next=allCams[nextIdx];
+  $('swSub').textContent=(next.isFront?'Front':'Back')+' — '+(next.label.slice(0,28)||'Camera');
+  $('switchOverlay').classList.add('show');
+  try{camIdx=nextIdx;await openStream(camIdx);}
+  catch(e){camIdx=(camIdx-1+allCams.length)%allCams.length;await openStream(camIdx);}
+  $('switchOverlay').classList.remove('show');
+  isSwitching=false;
+}
+
+let fallbackFacing='user';
+async function flipByFacingMode(){
+  isSwitching=true;
+  $('swSub').textContent='Switching facing mode...';
+  $('switchOverlay').classList.add('show');
+  $('dockFlipBtn').classList.add('spinning');
+  setTimeout(()=>$('dockFlipBtn').classList.remove('spinning'),450);
+  fallbackFacing=fallbackFacing==='user'?'environment':'user';
+  if(video.srcObject)video.srcObject.getTracks().forEach(t=>t.stop());
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:fallbackFacing},width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=stream;
+    await new Promise(r=>{video.onloadedmetadata=r;});
+    await video.play();
+    const front=fallbackFacing==='user';
+    isMirrored=front;
+    video.classList.toggle('mirror',front);
+    canvas.classList.toggle('mirror',front);
+    const lbl=$('camLabel');
+    lbl.textContent=front?'FRONT CAM':'BACK CAM';
+    lbl.classList.remove('front','back');
+    lbl.classList.add(front?'front':'back');
+    smoF.reset();smoP.reset();smoL.reset();smoR.reset();
+    lastRes=null;busy=false;detectedFaces=[];
+  }catch(e){
+    fallbackFacing=fallbackFacing==='user'?'environment':'user';
+  }
+  $('switchOverlay').classList.remove('show');
+  isSwitching=false;
+}
+
+// ══════════════════════════════════════════════════════════════
+// FRAME LOOP
+// ══════════════════════════════════════════════════════════════
+function startFrameLoop(){
+  // face detection runs on its own interval
+  faceDetectInterval = setInterval(runFaceDetection, 500);
+
+  async function tick(){
+    if(!isSwitching&&holistic&&video.readyState>=2&&!busy){
+      busy=true;
+      try{await holistic.send({image:video});}catch(e){}
+      busy=false;
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING — HOLISTIC
+// ══════════════════════════════════════════════════════════════
+function resizeCanvas(){
+  canvas.width=video.videoWidth||window.innerWidth;
+  canvas.height=video.videoHeight||window.innerHeight;
+}
+function sg(c,b=12){if(!SHOW.glow){ctx.shadowBlur=0;return;}ctx.shadowColor=c;ctx.shadowBlur=b;}
+function cg(){ctx.shadowBlur=0;}
+function dot(x,y,r,c,g=10){sg(c,g);ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=c;ctx.fill();cg();}
+function line(ax,ay,bx,by,c,w=2,g=8){sg(c,g);ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.strokeStyle=c;ctx.lineWidth=w;ctx.stroke();cg();}
+function poly(pts,fill,alpha=0.2,stroke=null){if(pts.length<3)return;ctx.save();ctx.globalAlpha=alpha;ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.globalAlpha=Math.min(1,alpha*2.5);ctx.strokeStyle=stroke;ctx.lineWidth=1.5;ctx.stroke();}ctx.restore();}
+function lbl(x,y,t,c){if(!SHOW.labels)return;ctx.save();ctx.font='bold 10px Rajdhani,sans-serif';ctx.fillStyle='rgba(1,4,9,0.7)';const w=ctx.measureText(t).width;ctx.fillRect(x+5,y-13,w+6,16);ctx.fillStyle=c;ctx.fillText(t,x+8,y-1);ctx.restore();}
+
+const FACE_CONTOUR=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
+const LEFT_EYE=[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246,33];
+const RIGHT_EYE=[362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398,362];
+const LIP_OUT=[61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146,61];
+const LIP_IN=[78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95,78];
+const LIC=468,RIC=473,LIR=[469,470,471,472],RIR=[474,475,476,477];
+const LEB=[46,53,52,65,55,107,66,105,63,70,46],REB=[276,283,282,295,285,336,296,334,293,300,276];
+const NB=[168,6,197,195,5,4];
+const CL=[234,93,132,58,172,136,150,176,148,152],CR=[454,323,361,288,397,365,379,378,400,377];
+
+function drawFace(raw){
+  const lms=smoF.smooth(raw);if(!lms)return;
+  const W=canvas.width,H=canvas.height;
+  if(SHOW.faceMesh){ctx.save();for(const lm of lms){ctx.beginPath();ctx.arc(lm.x*W,lm.y*H,0.9,0,Math.PI*2);ctx.fillStyle=C.face+'88';ctx.fill();}ctx.restore();}
+  if(SHOW.faceContour){ctx.save();sg(C.face,10);ctx.beginPath();ctx.strokeStyle=C.face+'cc';ctx.lineWidth=1.5;for(let i=0;i<FACE_CONTOUR.length;i++){const m=lms[FACE_CONTOUR[i]];i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
+  if(SHOW.faceBrows)for(const brow of[LEB,REB]){const pts=brow.map(i=>lms[i]).filter(Boolean).map(m=>[m.x*W,m.y*H]);if(pts.length<4)continue;ctx.save();ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();ctx.fillStyle=C.face+'33';ctx.fill();sg(C.face,10);ctx.strokeStyle=C.face+'cc';ctx.lineWidth=1.6;ctx.stroke();cg();ctx.restore();}
+  if(SHOW.faceEyes){
+    for(const eye of[LEFT_EYE,RIGHT_EYE]){ctx.save();sg(C.eye,14);ctx.beginPath();ctx.strokeStyle=C.eye;ctx.lineWidth=1.5;for(let i=0;i<eye.length;i++){const m=lms[eye[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
+    for(const[ci,ri]of[[LIC,LIR],[RIC,RIR]]){const c=lms[ci];if(!c)continue;const rp=ri.map(i=>lms[i]).filter(Boolean);if(rp.length===4){const dx=rp[0].x*W-c.x*W,dy=rp[0].y*H-c.y*H,r=Math.sqrt(dx*dx+dy*dy);ctx.save();sg(C.eye,18);ctx.beginPath();ctx.arc(c.x*W,c.y*H,r,0,Math.PI*2);ctx.strokeStyle=C.eye+'cc';ctx.lineWidth=1.5;ctx.stroke();cg();ctx.restore();}dot(c.x*W,c.y*H,3.5,C.eye,20);}
+  }
+  if(SHOW.faceNose){ctx.save();sg(C.face,8);ctx.beginPath();ctx.strokeStyle=C.face+'66';ctx.lineWidth=1;for(let i=0;i<NB.length;i++){const m=lms[NB[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();dot(lms[1].x*W,lms[1].y*H,3,C.face,14);}
+  if(SHOW.faceLips)for(const lip of[LIP_OUT,LIP_IN]){ctx.save();sg(C.lip,10);ctx.beginPath();ctx.strokeStyle=C.lip+'dd';ctx.lineWidth=1.2;for(let i=0;i<lip.length;i++){const m=lms[lip[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
+  if(SHOW.faceCheeks)for(const i of[...CL,...CR]){const m=lms[i];dot(m.x*W,m.y*H,1.5,C.face+'55',0);}
+}
+
+const FG={thumb:[1,2,3,4],index:[5,6,7,8],middle:[9,10,11,12],ring:[13,14,15,16],pinky:[17,18,19,20]};
+const FC={thumb:C.thumb,index:C.index,middle:C.middle,ring:C.ring,pinky:C.pinky};
+const PALM=[0,1,5,9,13,17];
+function drawHand(raw,side){
+  const lms=(side==='Left'?smoL:smoR).smooth(raw);if(!lms)return;
+  const W=canvas.width,H=canvas.height,base=side==='Left'?C.lhand:C.rhand;
+  poly(PALM.map(i=>[lms[i].x*W,lms[i].y*H]),base,0.12,base);
+  for(const[fn,js]of Object.entries(FG)){const fc=FC[fn];line(lms[0].x*W,lms[0].y*H,lms[js[0]].x*W,lms[js[0]].y*H,fc,1.5,6);for(let i=0;i<js.length-1;i++){const a=lms[js[i]],b=lms[js[i+1]];line(a.x*W,a.y*H,b.x*W,b.y*H,fc,2,10);}js.forEach((j,k)=>{const m=lms[j],t=k===js.length-1;dot(m.x*W,m.y*H,t?5:3,fc,t?14:8);});}
+  dot(lms[0].x*W,lms[0].y*H,6,base,16);
+  [[1,5],[5,9],[9,13],[13,17]].forEach(([a,b])=>line(lms[a].x*W,lms[a].y*H,lms[b].x*W,lms[b].y*H,base+'66',1,0));
+}
+
+const PL={NOSE:0,L_EAR:7,R_EAR:8,L_SHOULDER:11,R_SHOULDER:12,L_ELBOW:13,R_ELBOW:14,L_WRIST:15,R_WRIST:16,L_PINKY:17,R_PINKY:18,L_INDEX:19,R_INDEX:20,L_THUMB:21,R_THUMB:22,L_HIP:23,R_HIP:24,L_KNEE:25,R_KNEE:26,L_ANKLE:27,R_ANKLE:28,L_HEEL:29,R_HEEL:30,L_FOOT:31,R_FOOT:32};
+function pv(lms,i,t=0.25){const m=lms[i];return m&&(!m.visibility||m.visibility>t);}
+function pp(lms,i){const m=lms[i];return[m.x*canvas.width,m.y*canvas.height];}
+function bone(lms,a,b,c,w=2.5,g=10){if(!pv(lms,a)||!pv(lms,b))return;const[ax,ay]=pp(lms,a),[bx,by]=pp(lms,b);line(ax,ay,bx,by,c,w,g);}
+function jnt(lms,i,c,r=6){if(!pv(lms,i))return;const[x,y]=pp(lms,i);dot(x,y,r,c,14);}
+function plbl(lms,i,t,c){if(!pv(lms,i))return;const[x,y]=pp(lms,i);lbl(x,y,t,c);}
+function preg(lms,ids,fill,alpha=0.28){const pts=[];for(const i of ids){if(!pv(lms,i))return;pts.push(pp(lms,i));}poly(pts,fill,alpha,fill);}
+
+function drawFoot(lms,side){
+  const L=side==='left';
+  const aI=L?PL.L_ANKLE:PL.R_ANKLE,hI=L?PL.L_HEEL:PL.R_HEEL,fI=L?PL.L_FOOT:PL.R_FOOT,col=L?C.lfoot:C.rfoot;
+  if(!pv(lms,aI)||!pv(lms,hI)||!pv(lms,fI))return;
+  const W=canvas.width,H=canvas.height;
+  const ankle=[lms[aI].x*W,lms[aI].y*H],heel=[lms[hI].x*W,lms[hI].y*H],foot=[lms[fI].x*W,lms[fI].y*H];
+  const vx=foot[0]-heel[0],vy=foot[1]-heel[1],len=Math.sqrt(vx*vx+vy*vy)||1;
+  const dir=[vx/len,vy/len],perp=[-dir[1],dir[0]],fw=len*0.38;
+  const tips=[],bases=[];
+  for(let i=0;i<5;i++){const t=(i/4)-0.5,lf=1-0.28*Math.abs(t*2);const base=[foot[0]+perp[0]*t*fw*0.65,foot[1]+perp[1]*t*fw*0.65];const tip=[base[0]+dir[0]*len*0.20*lf+perp[0]*t*fw*0.35,base[1]+dir[1]*len*0.20*lf+perp[1]*t*fw*0.35];bases.push(base);tips.push(tip);line(base[0],base[1],tip[0],tip[1],col,2,10);dot(tip[0],tip[1],3.5,col,12);dot(base[0],base[1],2,col,6);}
+  for(let i=0;i<4;i++){line(tips[i][0],tips[i][1],tips[i+1][0],tips[i+1][1],col+'55',1,0);line(bases[i][0],bases[i][1],bases[i+1][0],bases[i+1][1],col+'44',1,0);}
+  ctx.save();sg(col,8);ctx.beginPath();ctx.strokeStyle=col+'88';ctx.lineWidth=1.5;ctx.moveTo(heel[0],heel[1]);for(const b of bases)ctx.lineTo(b[0],b[1]);ctx.lineTo(ankle[0],ankle[1]);ctx.stroke();cg();ctx.restore();
+}
+
+function drawBody(raw){
+  const lms=smoP.smooth(raw);if(!lms)return;
+  if(SHOW.bodyChest){preg(lms,[PL.L_SHOULDER,PL.R_SHOULDER,PL.R_HIP,PL.L_HIP],C.chest,0.22);bone(lms,PL.L_SHOULDER,PL.R_SHOULDER,C.spine,2.5,10);bone(lms,PL.L_HIP,PL.R_HIP,C.spine,2.5,10);bone(lms,PL.L_SHOULDER,PL.L_HIP,C.spine,2,8);bone(lms,PL.R_SHOULDER,PL.R_HIP,C.spine,2,8);if(pv(lms,PL.NOSE)&&pv(lms,PL.L_SHOULDER)&&pv(lms,PL.R_SHOULDER)){const ls=pp(lms,PL.L_SHOULDER),rs=pp(lms,PL.R_SHOULDER),mid=[(ls[0]+rs[0])/2,(ls[1]+rs[1])/2],nose=pp(lms,PL.NOSE);line(nose[0],nose[1],mid[0],mid[1],C.spine+'88',2,8);}jnt(lms,PL.L_SHOULDER,C.larm,7);jnt(lms,PL.R_SHOULDER,C.rarm,7);jnt(lms,PL.L_HIP,C.chest,8);jnt(lms,PL.R_HIP,C.chest,8);plbl(lms,PL.L_SHOULDER,'L.shoulder',C.larm);plbl(lms,PL.R_SHOULDER,'R.shoulder',C.rarm);plbl(lms,PL.L_HIP,'L.hip',C.chest);plbl(lms,PL.R_HIP,'R.hip',C.chest);}
+  if(SHOW.bodyBelly)preg(lms,[PL.L_HIP,PL.R_HIP,PL.R_KNEE,PL.L_KNEE],C.belly,0.18);
+  if(SHOW.bodyArms){bone(lms,PL.L_SHOULDER,PL.L_ELBOW,C.larm,3,12);bone(lms,PL.L_ELBOW,PL.L_WRIST,C.larm,2.5,10);bone(lms,PL.R_SHOULDER,PL.R_ELBOW,C.rarm,3,12);bone(lms,PL.R_ELBOW,PL.R_WRIST,C.rarm,2.5,10);bone(lms,PL.L_WRIST,PL.L_PINKY,C.larm,1.5,6);bone(lms,PL.L_WRIST,PL.L_INDEX,C.larm,1.5,6);bone(lms,PL.L_WRIST,PL.L_THUMB,C.thumb,1.5,6);bone(lms,PL.R_WRIST,PL.R_PINKY,C.rarm,1.5,6);bone(lms,PL.R_WRIST,PL.R_INDEX,C.rarm,1.5,6);bone(lms,PL.R_WRIST,PL.R_THUMB,C.thumb,1.5,6);jnt(lms,PL.L_ELBOW,C.larm,6);jnt(lms,PL.R_ELBOW,C.rarm,6);jnt(lms,PL.L_WRIST,C.larm,5);jnt(lms,PL.R_WRIST,C.rarm,5);jnt(lms,PL.L_PINKY,C.larm,3);jnt(lms,PL.R_PINKY,C.rarm,3);jnt(lms,PL.L_INDEX,C.index,3);jnt(lms,PL.R_INDEX,C.index,3);jnt(lms,PL.L_THUMB,C.thumb,3);jnt(lms,PL.R_THUMB,C.thumb,3);plbl(lms,PL.L_ELBOW,'L.elbow',C.larm);plbl(lms,PL.R_ELBOW,'R.elbow',C.rarm);}
+  if(SHOW.bodyLegs){preg(lms,[PL.L_HIP,PL.L_KNEE,PL.L_ANKLE],C.lthigh,0.15);preg(lms,[PL.R_HIP,PL.R_KNEE,PL.R_ANKLE],C.rthigh,0.15);preg(lms,[PL.L_KNEE,PL.L_ANKLE,PL.L_HEEL],C.lshin,0.15);preg(lms,[PL.R_KNEE,PL.R_ANKLE,PL.R_HEEL],C.rshin,0.15);bone(lms,PL.L_HIP,PL.L_KNEE,C.lthigh,3.5,14);bone(lms,PL.L_KNEE,PL.L_ANKLE,C.lshin,3,12);bone(lms,PL.R_HIP,PL.R_KNEE,C.rthigh,3.5,14);bone(lms,PL.R_KNEE,PL.R_ANKLE,C.rshin,3,12);jnt(lms,PL.L_KNEE,C.lthigh,7);jnt(lms,PL.R_KNEE,C.rthigh,7);jnt(lms,PL.L_ANKLE,C.lshin,6);jnt(lms,PL.R_ANKLE,C.rshin,6);plbl(lms,PL.L_KNEE,'L.knee',C.lthigh);plbl(lms,PL.R_KNEE,'R.knee',C.rthigh);plbl(lms,PL.L_ANKLE,'L.ankle',C.lshin);plbl(lms,PL.R_ANKLE,'R.ankle',C.rshin);}
+  jnt(lms,PL.NOSE,C.face,5);plbl(lms,PL.NOSE,'nose',C.face);
+  if(SHOW.bodyFeet){plbl(lms,PL.L_HEEL,'L.heel',C.lfoot);plbl(lms,PL.R_HEEL,'R.heel',C.rfoot);plbl(lms,PL.L_FOOT,'L.foot',C.lfoot);plbl(lms,PL.R_FOOT,'R.foot',C.rfoot);drawFoot(lms,'left');drawFoot(lms,'right');}
+}
+
+// ══════════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════════
+let ft=[];
+function fps(){const n=performance.now();ft.push(n);ft=ft.filter(t=>n-t<1000);return ft.length;}
+
+function render(){
+  resizeCanvas();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(lastRes){
+    const r=lastRes;
+    if(SHOW.body&&r.poseLandmarks)drawBody(r.poseLandmarks);
+    if(SHOW.face&&r.faceLandmarks)drawFace(r.faceLandmarks);
+    if(SHOW.hands&&SHOW.handLeft&&r.leftHandLandmarks)drawHand(r.leftHandLandmarks,'Left');
+    if(SHOW.hands&&SHOW.handRight&&r.rightHandLandmarks)drawHand(r.rightHandLandmarks,'Right');
+    updateStats(r);
+  }
+  // Draw face recognition overlay
+  drawFaceIdOverlay();
+
+  $('fpsVal').textContent=fps();
+  const d=new Date();
+  $('timeDisplay').textContent=d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0');
+}
+
+function updateStats(r){
+  const hF=!!r.faceLandmarks,hP=!!r.poseLandmarks,hL=!!r.leftHandLandmarks,hR=!!r.rightHandLandmarks;
+  $('sFaces').textContent=hF?'1':'0';
+  $('sLHand').textContent=hL?r.leftHandLandmarks.length:'0';
+  $('sRHand').textContent=hR?r.rightHandLandmarks.length:'0';
+  $('sPose').textContent=hP?r.poseLandmarks.length:'0';
+  $('sTotal').textContent=(hF?r.faceLandmarks.length:0)+(hL?r.leftHandLandmarks.length:0)+(hR?r.rightHandLandmarks.length:0)+(hP?r.poseLandmarks.length:0);
+  $('cFace').style.width=hF?'100%':'0%';
+  $('cPose').style.width=hP?Math.round(r.poseLandmarks.filter(l=>l.visibility>0.5).length/r.poseLandmarks.length*100)+'%':'0%';
+  $('cHands').style.width=((hL?50:0)+(hR?50:0))+'%';
+
+  // Emotion display from face-api detectedFaces
+  const eEl = $('emotionVal');
+  if(eEl){
+    if(detectedFaces.length>0){
+      const f = detectedFaces[0];
+      if(f.expressions){
+        const exprs = f.expressions;
+        const top = Object.entries(exprs).sort((a,b)=>b[1]-a[1])[0];
+        const EMOJIS = {happy:'😊',sad:'😢',angry:'😠',fearful:'😨',disgusted:'🤢',surprised:'😲',neutral:'😐'};
+        if(top){
+          const pct = (top[1]*100).toFixed(0);
+          const emoji = EMOJIS[top[0]]||'';
+          eEl.textContent = `${emoji} ${top[0].toUpperCase()} ${pct}%`;
+        }
+      } else {
+        eEl.textContent = '◌ DETECTING...';
+      }
+    } else {
+      eEl.textContent = '— NO FACE —';
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════
+function setLoad(pct,msg){$('loadBar').style.width=pct+'%';$('loadPct').textContent=pct+'%';$('loadMsg').textContent=msg;}
+
+async function startTracking(){
+  loadSettings();
+  applySettings();
+  $('permScreen').style.display='none';
+  $('loadScreen').style.display='flex';
+
+  setLoad(5,'Opening database...');
+  await openDB();
+  await loadKnownPersons();
+
+  setLoad(12,'Requesting camera permission...');
+  let initStream;
+  try{
+    initStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+  }catch(e){
+    alert('Camera access denied:\n'+e.message);
+    $('permScreen').style.display='flex';
+    $('loadScreen').style.display='none';
+    return;
+  }
+
+  setLoad(20,'Scanning all cameras...');
+  await enumerateCameras();
+  initStream.getTracks().forEach(t=>t.stop());
+
+  setLoad(30,'Loading face recognition models...');
+  await loadFaceApiModels();
+
+  setLoad(55,'Loading Holistic model...');
+  holistic=new Holistic({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`});
+  holistic.setOptions({
+    modelComplexity:1,
+    smoothLandmarks:true,
+    enableSegmentation:false,
+    smoothSegmentation:false,
+    refineFaceLandmarks:true,
+    minDetectionConfidence:0.5,
+    minTrackingConfidence:0.5,
+  });
+  holistic.onResults(r=>{lastRes=r;});
+
+  setLoad(75,'Initialising neural weights...');
+  await holistic.initialize();
+
+  setLoad(90,'Starting front camera...');
+  camIdx=0;
+  await openStream(camIdx);
+
+  setLoad(100,'Ready!');
+  await new Promise(r=>setTimeout(r,350));
+
+  $('loadScreen').style.display='none';
+  $('trackerUI').style.display='block';
+  applySettings(); // re-apply now that all elements exist
+
+  if(!faceApiReady){
+    showToast('⚠ FACE-API MODELS NOT LOADED — recognition disabled');
+  } else {
+    showToast('✓ FACE ID READY — ' + knownPersons.length + ' KNOWN PERSONS');
+  }
+
+  startFrameLoop();
+}
+
+// Enter key saves registration
+document.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && $('faceRegPopup').classList.contains('active')){
+    saveFacePerson();
+  }
+  if(e.key === 'Escape' && $('faceRegPopup').classList.contains('active')){
+    dismissRegPopup();
+  }
+});
+
+window.addEventListener('resize', resizeCanvas);
+</script>
+</body>
+</html>
