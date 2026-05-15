@@ -629,7 +629,6 @@ body::after{
         <button class="sub-tog on" id="togFaceNose" onclick="toggleSub('faceNose')"><span class="sub-pip" style="background:#00ffe7"></span>NOSE</button>
         <button class="sub-tog on" id="togFaceLips" onclick="toggleSub('faceLips')"><span class="sub-pip" style="background:#ff2d6b"></span>LIPS</button>
         <button class="sub-tog on" id="togFaceCheeks" onclick="toggleSub('faceCheeks')"><span class="sub-pip" style="background:#00ffe7"></span>CHEEKS</button>
-        <button class="sub-tog on" id="togFaceForehead" onclick="toggleSub('faceForehead')"><span class="sub-pip" style="background:#ffc300"></span>FOREHEAD</button>
         <button class="sub-tog" id="togFaceMeasure" onclick="toggleSub('faceMeasure')"><span class="sub-pip" style="background:#ff8c00"></span>MEASURE</button>
       </div>
     </div>
@@ -665,6 +664,11 @@ body::after{
     <div class="stat-row"><span class="stat-label">Pose pts</span><span class="stat-val" id="sPose">0</span></div>
     <div class="stat-row"><span class="stat-label">Total LM</span><span class="stat-val" id="sTotal">0</span></div>
     <div class="stat-row"><span class="stat-label">Known IDs</span><span class="stat-val" id="sKnown">0</span></div>
+    <div style="height:1px;background:var(--border);margin:0.45rem 0;"></div>
+    <div class="stat-row"><span class="stat-label">Face Length</span><span class="stat-val" id="sFaceLen">—</span></div>
+    <div class="stat-row"><span class="stat-label">Face Width</span><span class="stat-val" id="sFaceWidth">—</span></div>
+    <div class="stat-row"><span class="stat-label">Jaw Width</span><span class="stat-val" id="sJawWidth">—</span></div>
+    <div class="stat-row"><span class="stat-label" style="color:var(--accent3);">Face Shape</span><span class="stat-val" id="sFaceShape" style="color:var(--accent3);">—</span></div>
     <div class="confidence-bar">
       <div class="conf-label">CONFIDENCE</div>
       <div class="conf-row"><div class="conf-name">Face</div><div class="conf-track"><div class="conf-fill" id="cFace" style="background:#00ffe7;width:0%"></div></div></div>
@@ -807,7 +811,6 @@ body::after{
         <div class="sp-row"><div class="sp-row-label">NOSE</div><div class="ios-toggle on" id="spt-faceNose" onclick="toggleSub('faceNose');syncSpToggle('faceNose')"></div></div>
         <div class="sp-row"><div class="sp-row-label">LIPS</div><div class="ios-toggle on" id="spt-faceLips" onclick="toggleSub('faceLips');syncSpToggle('faceLips')"></div></div>
         <div class="sp-row"><div class="sp-row-label">CHEEKS</div><div class="ios-toggle on" id="spt-faceCheeks" onclick="toggleSub('faceCheeks');syncSpToggle('faceCheeks')"></div></div>
-        <div class="sp-row"><div class="sp-row-label">FOREHEAD DOTS</div><div class="ios-toggle on" id="spt-faceForehead" onclick="toggleSub('faceForehead');syncSpToggle('faceForehead')"></div></div>
         <div class="sp-row"><div><div class="sp-row-label">FACE MEASURE</div><div class="sp-row-sub">Hairline · jaw · width lines</div></div><div class="ios-toggle" id="spt-faceMeasure" onclick="toggleSub('faceMeasure');syncSpToggle('faceMeasure')"></div></div>
       </div>
     </div>
@@ -977,7 +980,7 @@ const SHOW={
   glow:true,labels:true,camera:true,
   faceMesh:true,faceContour:true,faceEyes:true,
   faceBrows:true,faceNose:true,faceLips:true,faceCheeks:true,
-  faceForehead:true,faceMeasure:false,
+  faceForehead:false,faceMeasure:false,
   handLeft:true,handRight:true,
   bodyChest:true,bodyBelly:true,bodyArms:true,bodyLegs:true,bodyFeet:true,
 };
@@ -2094,6 +2097,85 @@ function updateStats(r){
   $('cFace').style.width=hF?'100%':'0%';
   $('cPose').style.width=hP?Math.round(r.poseLandmarks.filter(l=>l.visibility>0.5).length/r.poseLandmarks.length*100)+'%':'0%';
   $('cHands').style.width=((hL?50:0)+(hR?50:0))+'%';
+
+  // ── Face measurements from MediaPipe face landmarks ───────────
+  if(hF){
+    const lms = r.faceLandmarks;
+    const W = canvas.width  || video.videoWidth  || window.innerWidth;
+    const H = canvas.height || video.videoHeight || window.innerHeight;
+
+    // Helper: pixel distance between two landmarks
+    function ldist(a, b){ const dx=(a.x-b.x)*W, dy=(a.y-b.y)*H; return Math.sqrt(dx*dx+dy*dy); }
+
+    // Key landmark indices (same as drawFaceMeasurements)
+    const hairline = lms[10];   // top of forehead
+    const chin     = lms[152];  // chin bottom
+    const lTemple  = lms[234];  // left temple
+    const rTemple  = lms[454];  // right temple
+    const lJaw     = lms[172];  // left jaw corner
+    const rJaw     = lms[397];  // right jaw corner
+    const lCheek   = lms[123];  // left cheekbone
+    const rCheek   = lms[352];  // right cheekbone
+    const lBrow    = lms[70];   // left brow
+    const rBrow    = lms[300];  // right brow
+
+    // Pixel distances
+    const faceLenPx   = ldist(hairline, chin);
+    const faceWidthPx = ldist(lTemple, rTemple);   // forehead width
+    const jawWidthPx  = ldist(lJaw, rJaw);
+    const cheekWidthPx= ldist(lCheek, rCheek);
+    const foreheadH   = ldist(hairline, {x:(lBrow.x+rBrow.x)/2, y:(lBrow.y+rBrow.y)/2});
+
+    // Convert px → cm using interpupillary distance as reference
+    // Average adult IPD ≈ 6.3 cm. Use left/right eye centres.
+    const lEye = lms[468] || lms[33];  // left iris centre or left eye corner
+    const rEye = lms[473] || lms[362]; // right iris centre or right eye corner
+    const ipdPx = ldist(lEye, rEye);
+    const ipdCm = 6.3; // avg IPD in cm
+    const pxPerCm = ipdPx > 0 ? ipdPx / ipdCm : 0;
+
+    if(pxPerCm > 0){
+      const toC = px => (px / pxPerCm).toFixed(1);
+      $('sFaceLen').textContent   = toC(faceLenPx)   + ' cm';
+      $('sFaceWidth').textContent = toC(faceWidthPx)  + ' cm';
+      $('sJawWidth').textContent  = toC(jawWidthPx)   + ' cm';
+
+      // ── Face shape prediction ─────────────────────────────────
+      // Ratios (all normalised to face length)
+      const flCm   = faceLenPx / pxPerCm;
+      const fwCm   = faceWidthPx / pxPerCm;
+      const jwCm   = jawWidthPx / pxPerCm;
+      const ckCm   = cheekWidthPx / pxPerCm;
+      const fhCm   = foreheadH / pxPerCm;
+
+      const lenToWid  = flCm / fwCm;   // >1 = longer than wide
+      const jawToTemp = jwCm / fwCm;   // jaw vs forehead
+      const jawToCheek= jwCm / ckCm;   // jaw vs cheekbone
+      const foreheadR = fwCm / ckCm;   // forehead vs cheekbone
+
+      let shape = 'OVAL';
+      if      (lenToWid > 1.5 && jawToTemp < 0.75)                shape = 'OBLONG';
+      else if (lenToWid > 1.35 && jawToTemp > 0.85)               shape = 'RECTANGULAR';
+      else if (lenToWid < 1.05 && jawToCheek > 0.9)               shape = 'ROUND';
+      else if (lenToWid < 1.1  && foreheadR < 0.85)               shape = 'SQUARE';
+      else if (jawToCheek < 0.72 && foreheadR < 0.9)              shape = 'HEART';
+      else if (jawToCheek < 0.72 && foreheadR >= 0.9)             shape = 'TRIANGLE';
+      else if (lenToWid >= 1.05 && lenToWid <= 1.35 && jawToCheek < 0.85) shape = 'OVAL';
+      else if (lenToWid >= 1.05 && lenToWid <= 1.35)              shape = 'OVAL';
+
+      $('sFaceShape').textContent = shape;
+    } else {
+      $('sFaceLen').textContent  = '— cm';
+      $('sFaceWidth').textContent= '— cm';
+      $('sJawWidth').textContent = '— cm';
+      $('sFaceShape').textContent= '—';
+    }
+  } else {
+    $('sFaceLen').textContent  = '—';
+    $('sFaceWidth').textContent= '—';
+    $('sJawWidth').textContent = '—';
+    $('sFaceShape').textContent= '—';
+  }
 
   // Emotion display from face-api detectedFaces
   const eEl = $('emotionVal');
