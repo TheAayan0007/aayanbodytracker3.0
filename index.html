@@ -629,6 +629,8 @@ body::after{
         <button class="sub-tog on" id="togFaceNose" onclick="toggleSub('faceNose')"><span class="sub-pip" style="background:#00ffe7"></span>NOSE</button>
         <button class="sub-tog on" id="togFaceLips" onclick="toggleSub('faceLips')"><span class="sub-pip" style="background:#ff2d6b"></span>LIPS</button>
         <button class="sub-tog on" id="togFaceCheeks" onclick="toggleSub('faceCheeks')"><span class="sub-pip" style="background:#00ffe7"></span>CHEEKS</button>
+        <button class="sub-tog on" id="togFaceForehead" onclick="toggleSub('faceForehead')"><span class="sub-pip" style="background:#ffc300"></span>FOREHEAD</button>
+        <button class="sub-tog" id="togFaceMeasure" onclick="toggleSub('faceMeasure')"><span class="sub-pip" style="background:#ff8c00"></span>MEASURE</button>
       </div>
     </div>
     <div class="tog-group" id="grpHands">
@@ -805,6 +807,8 @@ body::after{
         <div class="sp-row"><div class="sp-row-label">NOSE</div><div class="ios-toggle on" id="spt-faceNose" onclick="toggleSub('faceNose');syncSpToggle('faceNose')"></div></div>
         <div class="sp-row"><div class="sp-row-label">LIPS</div><div class="ios-toggle on" id="spt-faceLips" onclick="toggleSub('faceLips');syncSpToggle('faceLips')"></div></div>
         <div class="sp-row"><div class="sp-row-label">CHEEKS</div><div class="ios-toggle on" id="spt-faceCheeks" onclick="toggleSub('faceCheeks');syncSpToggle('faceCheeks')"></div></div>
+        <div class="sp-row"><div class="sp-row-label">FOREHEAD DOTS</div><div class="ios-toggle on" id="spt-faceForehead" onclick="toggleSub('faceForehead');syncSpToggle('faceForehead')"></div></div>
+        <div class="sp-row"><div><div class="sp-row-label">FACE MEASURE</div><div class="sp-row-sub">Hairline · jaw · width lines</div></div><div class="ios-toggle" id="spt-faceMeasure" onclick="toggleSub('faceMeasure');syncSpToggle('faceMeasure')"></div></div>
       </div>
     </div>
 
@@ -864,6 +868,13 @@ body::after{
         <div class="sp-row-sub">View &amp; manage registered faces</div>
       </div>
       <div style="color:var(--accent);font-size:0.8rem;">›</div>
+    </div>
+    <div class="sp-row">
+      <div>
+        <div class="sp-row-label">SETUP UNKNOWN'S FACE</div>
+        <div class="sp-row-sub">Show popup when unknown face detected</div>
+      </div>
+      <div class="ios-toggle on" id="st-setupUnknown" onclick="spToggle('setupUnknown')"></div>
     </div>
   </div>
 
@@ -966,6 +977,7 @@ const SHOW={
   glow:true,labels:true,camera:true,
   faceMesh:true,faceContour:true,faceEyes:true,
   faceBrows:true,faceNose:true,faceLips:true,faceCheeks:true,
+  faceForehead:true,faceMeasure:false,
   handLeft:true,handRight:true,
   bodyChest:true,bodyBelly:true,bodyArms:true,bodyLegs:true,bodyFeet:true,
 };
@@ -1119,7 +1131,7 @@ async function runFaceDetection(){
         const box = f.detection.box;
         const key = Math.round(box.x/80)+'_'+Math.round(box.y/80); // rough spatial key
         const now = Date.now();
-        if(!unknownCooldown[key] || (now - unknownCooldown[key]) > UNKNOWN_COOLDOWN_MS){
+        if(SP.setupUnknown && (!unknownCooldown[key] || (now - unknownCooldown[key]) > UNKNOWN_COOLDOWN_MS)){
           unknownCooldown[key] = now;
           if(!$('faceRegPopup').classList.contains('active')){
             showRegPopup(f);
@@ -1324,6 +1336,7 @@ const SP = {
   personBtn:     true,
   navPosition:   'bottom',
   uiVisible:     true,
+  setupUnknown:  true,
 };
 
 function loadSettings(){
@@ -1387,6 +1400,7 @@ function applySettings(){
   syncSettingToggle('hdrPanel',      SP.hdrPanel);
   syncSettingToggle('modelBadge',    SP.modelBadge);
   syncSettingToggle('personBtn',     SP.personBtn);
+  syncSettingToggle('setupUnknown',  SP.setupUnknown);
 
   // UI button appearance
   const uiBtn = $('dockUiBtn');
@@ -1808,6 +1822,182 @@ const LEB=[46,53,52,65,55,107,66,105,63,70,46],REB=[276,283,282,295,285,336,296,
 const NB=[168,6,197,195,5,4];
 const CL=[234,93,132,58,172,136,150,176,148,152],CR=[454,323,361,288,397,365,379,378,400,377];
 
+// ── Forehead / Hairline landmark indices (MediaPipe 468-pt mesh) ──────────────
+// Top-of-head arc (hairline): landmark indices tracing the hairline from temple to temple
+// These are the highest scalp-edge landmarks in the 468-pt mesh
+const HAIRLINE_TOP = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323]; // right temple across top
+const HAIRLINE_LEFT  = [127, 162, 21, 54, 103, 67, 109, 10];  // left side forehead
+const HAIRLINE_RIGHT = [338, 297, 332, 284, 251, 389];        // right side forehead
+// Full hairline arc indices for the forehead region in order
+const HAIRLINE_ARC = [109, 67, 103, 54, 21, 162, 127, 234, 93, 132, 58, 172, 136, 150, 176,
+                      148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454, 356, 389,
+                      251, 284, 332, 297, 338, 10, 109];
+// Forehead mid-band dots (between brows and hairline)
+const FOREHEAD_MID = [10, 151, 9, 8, 168, 6, 197, 195, 5];
+// Side forehead landmarks (temples)
+const FOREHEAD_SIDE_L = [234, 127, 162, 21, 54, 103, 67, 109];
+const FOREHEAD_SIDE_R = [338, 297, 332, 284, 251, 389, 356, 454];
+// Key single-point anchors
+const LM_FOREHEAD_TOP = 10;   // top-centre of forehead / hairline peak
+const LM_CHIN        = 152;   // chin bottom
+const LM_L_TEMPLE   = 234;
+const LM_R_TEMPLE   = 454;
+const LM_NOSE_TIP   = 4;
+const LM_L_JAW_END  = 172;   // left jaw corner
+const LM_R_JAW_END  = 397;   // right jaw corner
+const LM_BROW_L     = 70;    // left brow top-centre
+const LM_BROW_R     = 300;   // right brow top-centre
+const LM_L_CHKBNE   = 123;   // left cheekbone outer
+const LM_R_CHKBNE   = 352;   // right cheekbone outer
+
+function drawForeheadDots(lms, W, H) {
+  if (!SHOW.faceForehead) return;
+  const c = '#ffc300';
+  // Draw hairline arc dots
+  for (const idx of HAIRLINE_ARC) {
+    const m = lms[idx]; if (!m) continue;
+    ctx.save();
+    if (SHOW.glow) { ctx.shadowColor = c; ctx.shadowBlur = 8; }
+    ctx.beginPath(); ctx.arc(m.x * W, m.y * H, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = c + 'cc'; ctx.fill();
+    ctx.restore();
+  }
+  // Extra mid-forehead dots
+  for (const idx of FOREHEAD_MID) {
+    const m = lms[idx]; if (!m) continue;
+    ctx.save();
+    if (SHOW.glow) { ctx.shadowColor = '#ff8c00'; ctx.shadowBlur = 6; }
+    ctx.beginPath(); ctx.arc(m.x * W, m.y * H, 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff8c00aa'; ctx.fill();
+    ctx.restore();
+  }
+  // Highlight hairline peak with larger dot + label
+  const peak = lms[LM_FOREHEAD_TOP];
+  if (peak) {
+    ctx.save();
+    if (SHOW.glow) { ctx.shadowColor = c; ctx.shadowBlur = 14; }
+    ctx.beginPath(); ctx.arc(peak.x * W, peak.y * H, 4, 0, Math.PI * 2);
+    ctx.fillStyle = c; ctx.fill();
+    ctx.restore();
+    if (SHOW.labels) lbl(peak.x * W + 4, peak.y * H - 6, 'hairline', c);
+  }
+  // Temple dots
+  for (const idx of [LM_L_TEMPLE, LM_R_TEMPLE]) {
+    const m = lms[idx]; if (!m) continue;
+    ctx.save();
+    if (SHOW.glow) { ctx.shadowColor = c; ctx.shadowBlur = 10; }
+    ctx.beginPath(); ctx.arc(m.x * W, m.y * H, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = c + 'dd'; ctx.fill();
+    ctx.restore();
+    if (SHOW.labels) lbl(m.x * W, m.y * H - 6, idx === LM_L_TEMPLE ? 'L.temple' : 'R.temple', c);
+  }
+}
+
+function drawFaceMeasurements(lms, W, H) {
+  if (!SHOW.faceMeasure) return;
+  const mc = '#ff8c00'; // measurement line colour
+  const tc = '#ffc300'; // text colour
+
+  function mDot(m, r=3.5, c=mc) {
+    if (!m) return;
+    ctx.save(); if(SHOW.glow){ctx.shadowColor=c;ctx.shadowBlur=10;}
+    ctx.beginPath(); ctx.arc(m.x*W, m.y*H, r, 0, Math.PI*2);
+    ctx.fillStyle = c; ctx.fill(); ctx.restore();
+  }
+  function mLine(a, b, c=mc, dash=false) {
+    if (!a || !b) return;
+    ctx.save(); if(SHOW.glow){ctx.shadowColor=c;ctx.shadowBlur=8;}
+    ctx.beginPath(); ctx.moveTo(a.x*W, a.y*H); ctx.lineTo(b.x*W, b.y*H);
+    ctx.strokeStyle = c + 'cc'; ctx.lineWidth = 1.5;
+    if (dash) ctx.setLineDash([4,4]);
+    ctx.stroke(); ctx.restore();
+  }
+  function mLabel(x, y, text, c=tc) {
+    ctx.save();
+    ctx.font = 'bold 10px Orbitron, monospace';
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(1,4,9,0.82)';
+    ctx.fillRect(x - w/2 - 4, y - 12, w + 8, 15);
+    ctx.fillStyle = c;
+    if(SHOW.glow){ctx.shadowColor=c;ctx.shadowBlur=6;}
+    ctx.textAlign = 'center';
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+  function pxDist(a, b) {
+    if (!a || !b) return 0;
+    const dx = (a.x - b.x) * W, dy = (a.y - b.y) * H;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  const hairline = lms[LM_FOREHEAD_TOP];
+  const chin     = lms[LM_CHIN];
+  const lTemple  = lms[LM_L_TEMPLE];
+  const rTemple  = lms[LM_R_TEMPLE];
+  const nose     = lms[LM_NOSE_TIP];
+  const lJaw     = lms[LM_L_JAW_END];
+  const rJaw     = lms[LM_R_JAW_END];
+  const lBrow    = lms[LM_BROW_L];
+  const rBrow    = lms[LM_BROW_R];
+  const lCheek   = lms[LM_L_CHKBNE];
+  const rCheek   = lms[LM_R_CHKBNE];
+
+  // ── 1. Face Length: hairline → chin (vertical line)
+  if (hairline && chin) {
+    mLine(hairline, chin, '#00ffe7', false);
+    mDot(hairline, 4, '#00ffe7');
+    mDot(chin, 4, '#00ffe7');
+    const faceLen = pxDist(hairline, chin).toFixed(0);
+    const midX = (hairline.x + chin.x) / 2 * W;
+    const midY = (hairline.y + chin.y) / 2 * H;
+    mLabel(midX + 28, midY, `FACE ${faceLen}px`, '#00ffe7');
+  }
+
+  // ── 2. Forehead Height: hairline → brow midpoint
+  if (hairline && lBrow && rBrow) {
+    const browMid = { x: (lBrow.x + rBrow.x) / 2, y: (lBrow.y + rBrow.y) / 2 };
+    mLine(hairline, browMid, '#b388ff', true);
+    const fhLen = pxDist(hairline, browMid).toFixed(0);
+    const midX = (hairline.x + browMid.x) / 2 * W - 30;
+    const midY = (hairline.y + browMid.y) / 2 * H;
+    mLabel(midX, midY, `FH ${fhLen}px`, '#b388ff');
+  }
+
+  // ── 3. Forehead Width: L temple → R temple
+  if (lTemple && rTemple) {
+    mLine(lTemple, rTemple, mc, false);
+    mDot(lTemple, 3, mc); mDot(rTemple, 3, mc);
+    const fw = pxDist(lTemple, rTemple).toFixed(0);
+    const midX = (lTemple.x + rTemple.x) / 2 * W;
+    const midY = Math.min(lTemple.y, rTemple.y) * H - 10;
+    mLabel(midX, midY, `FW ${fw}px`, mc);
+  }
+
+  // ── 4. Face Width at nose / cheekbones
+  if (lCheek && rCheek) {
+    mLine(lCheek, rCheek, '#ff2d6b', true);
+    mDot(lCheek, 3, '#ff2d6b'); mDot(rCheek, 3, '#ff2d6b');
+    const cw = pxDist(lCheek, rCheek).toFixed(0);
+    const midX = (lCheek.x + rCheek.x) / 2 * W;
+    const midY = (lCheek.y + rCheek.y) / 2 * H + 14;
+    mLabel(midX, midY, `CHK ${cw}px`, '#ff2d6b');
+  }
+
+  // ── 5. Jaw Width: L jaw end → R jaw end
+  if (lJaw && rJaw) {
+    mLine(lJaw, rJaw, '#69ff47', false);
+    mDot(lJaw, 3.5, '#69ff47'); mDot(rJaw, 3.5, '#69ff47');
+    const jw = pxDist(lJaw, rJaw).toFixed(0);
+    const midX = (lJaw.x + rJaw.x) / 2 * W;
+    const midY = (lJaw.y + rJaw.y) / 2 * H + 14;
+    mLabel(midX, midY, `JAW ${jw}px`, '#69ff47');
+    if (SHOW.labels) {
+      lbl(lJaw.x * W, lJaw.y * H - 6, 'L.jaw', '#69ff47');
+      lbl(rJaw.x * W, rJaw.y * H - 6, 'R.jaw', '#69ff47');
+    }
+  }
+}
+
 function drawFace(raw){
   const lms=smoF.smooth(raw);if(!lms)return;
   const W=canvas.width,H=canvas.height;
@@ -1821,6 +2011,8 @@ function drawFace(raw){
   if(SHOW.faceNose){ctx.save();sg(C.face,8);ctx.beginPath();ctx.strokeStyle=C.face+'66';ctx.lineWidth=1;for(let i=0;i<NB.length;i++){const m=lms[NB[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();dot(lms[1].x*W,lms[1].y*H,3,C.face,14);}
   if(SHOW.faceLips)for(const lip of[LIP_OUT,LIP_IN]){ctx.save();sg(C.lip,10);ctx.beginPath();ctx.strokeStyle=C.lip+'dd';ctx.lineWidth=1.2;for(let i=0;i<lip.length;i++){const m=lms[lip[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
   if(SHOW.faceCheeks)for(const i of[...CL,...CR]){const m=lms[i];dot(m.x*W,m.y*H,1.5,C.face+'55',0);}
+  drawForeheadDots(lms, W, H);
+  drawFaceMeasurements(lms, W, H);
 }
 
 const FG={thumb:[1,2,3,4],index:[5,6,7,8],middle:[9,10,11,12],ring:[13,14,15,16],pinky:[17,18,19,20]};
