@@ -664,6 +664,7 @@ body::after{
     <div class="stat-row"><span class="stat-label">Pose pts</span><span class="stat-val" id="sPose">0</span></div>
     <div class="stat-row"><span class="stat-label">Total LM</span><span class="stat-val" id="sTotal">0</span></div>
     <div class="stat-row"><span class="stat-label">Known IDs</span><span class="stat-val" id="sKnown">0</span></div>
+    <div class="stat-row"><span class="stat-label" style="color:var(--accent3);">Portal Filter</span><span class="stat-val" id="sFilter" style="color:var(--accent3);">OFF</span></div>
     <div style="height:1px;background:var(--border);margin:0.45rem 0;"></div>
     <div class="stat-row"><span class="stat-label">Face Length</span><span class="stat-val" id="sFaceLen">—</span></div>
     <div class="stat-row"><span class="stat-label">Face Width</span><span class="stat-val" id="sFaceWidth">—</span></div>
@@ -847,6 +848,18 @@ body::after{
         <div class="sp-row"><div class="sp-row-label">POINT LABELS</div><div class="ios-toggle on" id="spt-labels" onclick="toggleFlat('labels');syncSpToggle('labels')"></div></div>
         <div class="sp-row"><div class="sp-row-label">CAMERA FEED</div><div class="ios-toggle on" id="spt-camera" onclick="toggleFlat('camera');syncSpToggle('camera')"></div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Effects -->
+  <div class="sp-section">
+    <div class="sp-section-title">Effects</div>
+    <div class="sp-row">
+      <div>
+        <div class="sp-row-label">PORTAL FILTERS</div>
+        <div class="sp-row-sub">Bring both hands together to cycle 8 AR filters</div>
+      </div>
+      <div class="ios-toggle on" id="st-filters" onclick="spToggle('filters')"></div>
     </div>
   </div>
 
@@ -1340,6 +1353,7 @@ const SP = {
   navPosition:   'bottom',
   uiVisible:     true,
   setupUnknown:  true,
+  filters:       true,
 };
 
 function loadSettings(){
@@ -1404,6 +1418,7 @@ function applySettings(){
   syncSettingToggle('modelBadge',    SP.modelBadge);
   syncSettingToggle('personBtn',     SP.personBtn);
   syncSettingToggle('setupUnknown',  SP.setupUnknown);
+  syncSettingToggle('filters',       SP.filters);
 
   // UI button appearance
   const uiBtn = $('dockUiBtn');
@@ -2063,6 +2078,242 @@ function drawBody(raw){
 }
 
 // ══════════════════════════════════════════════════════════════
+// PORTAL FILTERS — ported from the "Filters" hand-gesture AR project
+// (hand_tracking.py + geometry.py + filters.py + main.py)
+// Hold both hands up with index+thumb extended; bring them together
+// to "close" the portal and cycle to the next of 8 filters.
+// ══════════════════════════════════════════════════════════════
+const PORTAL_INDEX_TIP = 8, PORTAL_THUMB_TIP = 4;
+
+function portalWidth(p1, p2, p3, p4){
+  const topW    = Math.hypot(p3[0]-p1[0], p3[1]-p1[1]);
+  const bottomW = Math.hypot(p4[0]-p2[0], p4[1]-p2[1]);
+  return (topW + bottomW) / 2;
+}
+
+class ClosingGestureDetector{
+  constructor(closeRatio=0.16, openRatio=0.30){
+    this.closeRatio = closeRatio;
+    this.openRatio  = openRatio;
+    this.isClosed   = false;
+  }
+  update(width, frameW){
+    const closeThreshold = this.closeRatio * frameW;
+    const openThreshold  = this.openRatio  * frameW;
+    let triggered = false;
+    if(!this.isClosed && width < closeThreshold){
+      this.isClosed = true;
+      triggered = true;
+    } else if(this.isClosed && width > openThreshold){
+      this.isClosed = false;
+    }
+    return triggered;
+  }
+}
+const portalCloseDetector = new ClosingGestureDetector();
+let portalFilterIndex = 0;
+
+// ── Filters ───────────────────────────────────────────────────
+// Each filter mutates the offscreen context `fctx` in place; (w,h) = ROI size in px.
+// Ported pixel-for-pixel from filters.py (BGR colour literals converted to RGB).
+
+function filtroGrid(fctx, w, h){
+  const step = 22;
+  fctx.save();
+  fctx.strokeStyle = 'rgba(235,235,235,0.75)';
+  fctx.lineWidth = 1;
+  fctx.beginPath();
+  for(let x=0; x<w; x+=step){ fctx.moveTo(x+0.5,0); fctx.lineTo(x+0.5,h); }
+  for(let y=0; y<h; y+=step){ fctx.moveTo(0,y+0.5); fctx.lineTo(w,y+0.5); }
+  fctx.stroke();
+  fctx.restore();
+}
+
+function filtro1(fctx, w, h){
+  const img = fctx.getImageData(0,0,w,h), d = img.data;
+  for(let i=0; i<d.length; i+=4){
+    const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    let r,g,b;
+    if(gray < 60){ r=10; g=8; b=15; }
+    else if(gray < 130){ r=214; g=30; b=118; }
+    else if(gray < 195){ r=235; g=140; b=35; }
+    else { r=240; g=240; b=235; }
+    d[i]=r; d[i+1]=g; d[i+2]=b;
+  }
+  fctx.putImageData(img,0,0);
+}
+
+function filtro2(fctx, w, h){
+  const img = fctx.getImageData(0,0,w,h), d = img.data;
+  const cell = 6;
+  for(let y=0; y<h; y++){
+    for(let x=0; x<w; x++){
+      const i = (y*w+x)*4;
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      const cx = (x%cell) - cell/2, cy = (y%cell) - cell/2;
+      const dist = Math.sqrt(cx*cx + cy*cy);
+      const radius = (1 - gray/255) * (cell/1.4);
+      const v = dist < radius ? 15 : 245;
+      d[i]=v; d[i+1]=v; d[i+2]=v;
+    }
+  }
+  fctx.putImageData(img,0,0);
+}
+
+function filtro3(fctx, w, h){
+  const img = fctx.getImageData(0,0,w,h);
+  const src = img.data.slice();
+  const d = img.data;
+  const shift = 6;
+  for(let y=0; y<h; y++){
+    const dark = (y%3===0);
+    for(let x=0; x<w; x++){
+      const i = (y*w+x)*4;
+      const rx = (x+shift) % w;
+      const bx = ((x-shift)%w + w) % w;
+      let R = src[(y*w+rx)*4], G = src[i+1], B = src[(y*w+bx)*4 + 2];
+      if(dark){ R*=0.72; G*=0.72; B*=0.72; }
+      d[i]=R; d[i+1]=G; d[i+2]=B;
+    }
+  }
+  fctx.putImageData(img,0,0);
+}
+
+const JET_LUT = (()=>{
+  const stops = [[0,0,0,128],[0.125,0,0,255],[0.375,0,255,255],[0.625,255,255,0],[0.875,255,0,0],[1,128,0,0]];
+  const lut = new Array(256);
+  for(let i=0;i<256;i++){
+    const t = i/255;
+    let s=0;
+    for(; s<stops.length-2; s++){ if(t<=stops[s+1][0]) break; }
+    const [t0,r0,g0,b0]=stops[s], [t1,r1,g1,b1]=stops[s+1];
+    const f = t1===t0 ? 0 : (t-t0)/(t1-t0);
+    lut[i]=[r0+(r1-r0)*f, g0+(g1-g0)*f, b0+(b1-b0)*f];
+  }
+  return lut;
+})();
+
+function filtro5(fctx, w, h){
+  const img = fctx.getImageData(0,0,w,h), d = img.data;
+  for(let i=0; i<d.length; i+=4){
+    const gray = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+    const c = JET_LUT[gray];
+    d[i]=c[0]; d[i+1]=c[1]; d[i+2]=c[2];
+  }
+  fctx.putImageData(img,0,0);
+}
+
+function filtro6(fctx, w, h){
+  const img = fctx.getImageData(0,0,w,h), d = img.data;
+  const cx = w/2, cy = h/2, maxDist = Math.sqrt(cx*cx+cy*cy) || 1;
+  for(let y=0; y<h; y++){
+    for(let x=0; x<w; x++){
+      const i = (y*w+x)*4;
+      const R=d[i], G=d[i+1], B=d[i+2];
+      let outR = 0.393*B + 0.769*G + 0.189*R;
+      let outG = 0.349*B + 0.686*G + 0.168*R;
+      let outB = 0.272*B + 0.534*G + 0.131*R;
+      outR = Math.min(255,outR); outG = Math.min(255,outG); outB = Math.min(255,outB);
+      const dist = Math.sqrt((x-cx)**2 + (y-cy)**2);
+      const vign = Math.max(0, Math.min(1, 1 - 0.5*(dist/maxDist)));
+      d[i]   = Math.min(255, outR*vign + Math.random()*25);
+      d[i+1] = Math.min(255, outG*vign + Math.random()*25);
+      d[i+2] = Math.min(255, outB*vign + Math.random()*25);
+    }
+  }
+  fctx.putImageData(img,0,0);
+}
+
+const blancoScratchCanvas = document.createElement('canvas');
+const blancoScratchCtx = blancoScratchCanvas.getContext('2d');
+function filtroBlanco(fctx, w, h){
+  blancoScratchCanvas.width=w; blancoScratchCanvas.height=h;
+  blancoScratchCtx.filter = 'blur(12px)';
+  blancoScratchCtx.drawImage(fctx.canvas,0,0);
+  blancoScratchCtx.filter = 'none';
+  blancoScratchCtx.fillStyle = 'rgba(255,255,255,0.45)';
+  blancoScratchCtx.fillRect(0,0,w,h);
+  fctx.clearRect(0,0,w,h);
+  fctx.drawImage(blancoScratchCanvas,0,0);
+}
+
+function filtroRosa(fctx, w, h){
+  const img = fctx.getImageData(0,0,w,h), d = img.data;
+  const cell = 5;
+  for(let y=0; y<h; y++){
+    for(let x=0; x<w; x++){
+      const i = (y*w+x)*4;
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      const cx = (x%cell) - cell/2, cy = (y%cell) - cell/2;
+      const dist = Math.sqrt(cx*cx + cy*cy);
+      const radius = (1 - gray/255) * (cell/1.3);
+      if(dist < radius){ d[i]=130; d[i+1]=20; d[i+2]=55; }
+      else { d[i]=245; d[i+1]=190; d[i+2]=215; }
+    }
+  }
+  fctx.putImageData(img,0,0);
+}
+
+const PORTAL_FILTERS = [filtroGrid, filtro1, filtro2, filtro3, filtro5, filtro6, filtroBlanco, filtroRosa];
+const PORTAL_FILTER_NAMES = ['GRID','DUOTONE','HALFTONE','RGB GLITCH','THERMAL','VINTAGE SEPIA','FROSTED GLASS','PINK HALFTONE'];
+
+const portalFilterCanvas = document.createElement('canvas');
+const portalFilterCtx = portalFilterCanvas.getContext('2d', {willReadFrequently:true});
+
+function paintFilterInPolygon(polygon, filterFn){
+  const W = canvas.width, H = canvas.height;
+  const xs = polygon.map(p=>p[0]), ys = polygon.map(p=>p[1]);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  const maxX = Math.max(...xs), maxY = Math.max(...ys);
+  let x = Math.max(minX,0), y = Math.max(minY,0);
+  let bw = Math.min(maxX,W) - x;
+  let bh = Math.min(maxY,H) - y;
+  if(bw<=1 || bh<=1) return;
+  x=Math.round(x); y=Math.round(y); bw=Math.round(bw); bh=Math.round(bh);
+
+  portalFilterCanvas.width=bw; portalFilterCanvas.height=bh;
+  portalFilterCtx.drawImage(video, x, y, bw, bh, 0, 0, bw, bh);
+  filterFn(portalFilterCtx, bw, bh);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(polygon[0][0], polygon[0][1]);
+  for(let i=1;i<polygon.length;i++) ctx.lineTo(polygon[i][0], polygon[i][1]);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(portalFilterCanvas, x, y);
+  ctx.restore();
+}
+
+function renderPortal(p1, p2, p3, p4, filterFn){
+  const polygon = [p1, p3, p4, p2];
+  paintFilterInPolygon(polygon, filterFn);
+  ctx.beginPath();
+  ctx.moveTo(polygon[0][0], polygon[0][1]);
+  for(let i=1;i<polygon.length;i++) ctx.lineTo(polygon[i][0], polygon[i][1]);
+  ctx.closePath();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function updatePortal(r){
+  const lh = r.leftHandLandmarks, rh = r.rightHandLandmarks;
+  if(!lh || !rh) return;
+  const W = canvas.width, H = canvas.height;
+  const p1 = [lh[PORTAL_INDEX_TIP].x*W, lh[PORTAL_INDEX_TIP].y*H];
+  const p2 = [lh[PORTAL_THUMB_TIP].x*W, lh[PORTAL_THUMB_TIP].y*H];
+  const p3 = [rh[PORTAL_INDEX_TIP].x*W, rh[PORTAL_INDEX_TIP].y*H];
+  const p4 = [rh[PORTAL_THUMB_TIP].x*W, rh[PORTAL_THUMB_TIP].y*H];
+
+  const width = portalWidth(p1,p2,p3,p4);
+  if(portalCloseDetector.update(width, W)){
+    portalFilterIndex = (portalFilterIndex+1) % PORTAL_FILTERS.length;
+  }
+  renderPortal(p1,p2,p3,p4,PORTAL_FILTERS[portalFilterIndex]);
+}
+
+// ══════════════════════════════════════════════════════════════
 // RENDER
 // ══════════════════════════════════════════════════════════════
 let ft=[];
@@ -2077,6 +2328,7 @@ function render(){
     if(SHOW.face&&r.faceLandmarks)drawFace(r.faceLandmarks);
     if(SHOW.hands&&SHOW.handLeft&&r.leftHandLandmarks)drawHand(r.leftHandLandmarks,'Left');
     if(SHOW.hands&&SHOW.handRight&&r.rightHandLandmarks)drawHand(r.rightHandLandmarks,'Right');
+    if(SP.filters)updatePortal(r);
     updateStats(r);
   }
   // Draw face recognition overlay
@@ -2097,6 +2349,7 @@ function updateStats(r){
   $('cFace').style.width=hF?'100%':'0%';
   $('cPose').style.width=hP?Math.round(r.poseLandmarks.filter(l=>l.visibility>0.5).length/r.poseLandmarks.length*100)+'%':'0%';
   $('cHands').style.width=((hL?50:0)+(hR?50:0))+'%';
+  $('sFilter').textContent = SP.filters ? PORTAL_FILTER_NAMES[portalFilterIndex] : 'OFF';
 
   // ── Face measurements from MediaPipe face landmarks ───────────
   if(hF){
