@@ -261,7 +261,7 @@ body::after{
 .dock-separator{width:1px;height:36px;background:rgba(0,255,231,0.1);margin:0 2px;}
 
 /* Cam bubble badge */
-#camBubble{
+.dock-bubble{
   position:absolute;top:-5px;right:-5px;
   width:17px;height:17px;border-radius:50%;
   background:var(--accent3);color:#010409;
@@ -700,7 +700,7 @@ body::after{
   </div>
 
   <!-- Model Badge -->
-  <div id="modelBadge" class="badge-bottom"><span>MediaPipe Holistic + face-api.js</span> ENGINE<br/>AAYAN SYSTEMS © 2026</div>
+  <div id="modelBadge" class="badge-bottom"><span>MediaPipe Holistic + face-api.js</span> ENGINE<br/><span id="engineStatus">● FACE ID —&nbsp;&nbsp;● DB —</span></div>
 
   <!-- Cam label -->
   <div id="camLabel" class="front label-bottom">FRONT CAM</div>
@@ -740,11 +740,23 @@ body::after{
     <span class="dock-label">SETTINGS</span>
   </button>
 
+  <div class="dock-separator" id="dockPersonSep"></div>
+
+  <!-- Persons button -->
+  <button class="dock-btn" id="dockPersonBtn" onclick="openPersonsModal()" title="Persons">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+    <div id="personsBubble" class="dock-bubble" style="background:var(--accent);">0</div>
+    <span class="dock-label">PERSONS</span>
+  </button>
+
   <div class="dock-separator"></div>
 
   <!-- Camera Flip button -->
   <button class="dock-btn dock-flip-btn" id="dockFlipBtn" onclick="flipCamera()" title="Flip Camera">
-    <div id="camBubble">?</div>
+    <div id="camBubble" class="dock-bubble">?</div>
     <svg class="dock-flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20 7h-3a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/>
       <circle cx="12" cy="13" r="3.2"/>
@@ -1023,44 +1035,60 @@ let db = null;
 const DB_NAME = 'AayanFaceDB';
 const DB_VER  = 1;
 
+let dbAvailable = true; // false = IndexedDB unusable this session (private mode, webview restrictions, etc.)
+
 function openDB(){
   return new Promise((res,rej)=>{
-    const req = indexedDB.open(DB_NAME, DB_VER);
+    if(!window.indexedDB){
+      rej(new Error('IndexedDB is not supported in this browser/webview'));
+      return;
+    }
+    let req;
+    try{
+      req = indexedDB.open(DB_NAME, DB_VER);
+    }catch(e){ rej(e); return; }
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if(!d.objectStoreNames.contains('persons')){
         d.createObjectStore('persons',{keyPath:'uid'});
       }
     };
-    req.onsuccess = e => { db=e.target.result; res(db); };
-    req.onerror   = e => rej(e);
+    req.onsuccess = () => { db=req.result; res(db); };
+    req.onerror   = () => rej(req.error || new Error('Failed to open IndexedDB'));
+    req.onblocked = () => rej(new Error('IndexedDB blocked — close this app in other tabs and reload'));
   });
 }
 
 function dbPut(person){
   return new Promise((res,rej)=>{
-    const tx = db.transaction('persons','readwrite');
+    if(!db){ rej(new Error('Database not available')); return; }
+    let tx;
+    try{ tx = db.transaction('persons','readwrite'); }catch(e){ rej(e); return; }
     tx.objectStore('persons').put(person);
     tx.oncomplete = () => res();
-    tx.onerror    = e => rej(e);
+    tx.onerror    = () => rej(tx.error || new Error('Failed to save person'));
   });
 }
 
 function dbGetAll(){
   return new Promise((res,rej)=>{
-    const tx = db.transaction('persons','readonly');
+    if(!db){ rej(new Error('Database not available')); return; }
+    let tx;
+    try{ tx = db.transaction('persons','readonly'); }catch(e){ rej(e); return; }
     const req = tx.objectStore('persons').getAll();
     req.onsuccess = () => res(req.result);
-    req.onerror   = e => rej(e);
+    req.onerror   = () => rej(req.error || new Error('Failed to read persons'));
   });
 }
 
 function dbDelete(uid){
   return new Promise((res,rej)=>{
-    const tx = db.transaction('persons','readwrite');
+    if(!db){ rej(new Error('Database not available')); return; }
+    let tx;
+    try{ tx = db.transaction('persons','readwrite'); }catch(e){ rej(e); return; }
     tx.objectStore('persons').delete(uid);
     tx.oncomplete = () => res();
-    tx.onerror    = e => rej(e);
+    tx.onerror    = () => rej(tx.error || new Error('Failed to delete person'));
   });
 }
 
@@ -1071,6 +1099,7 @@ let faceApiReady  = false;
 let knownPersons  = [];   // [{uid, name, descriptor(Float32Array), snapshot(dataURL), attrs}]
 let detectedFaces = [];   // current frame face results with identity
 let pendingRegFace = null; // face being registered
+let faceDetectFailCount = 0; // consecutive runFaceDetection errors, for surfacing a warning
 
 // Similarity threshold — lower = stricter match
 const FACE_MATCH_THRESHOLD = 0.45;
@@ -1110,15 +1139,19 @@ async function loadFaceApiModels(){
 }
 
 async function loadKnownPersons(){
-  knownPersons = await dbGetAll();
-  // Restore Float32Array from stored array
-  knownPersons.forEach(p => {
-    if(p.descriptor && !(p.descriptor instanceof Float32Array)){
-      p.descriptor = new Float32Array(Object.values(p.descriptor));
-    }
-  });
+  try{
+    knownPersons = await dbGetAll();
+    // Restore Float32Array from stored array
+    knownPersons.forEach(p => {
+      if(p.descriptor && !(p.descriptor instanceof Float32Array)){
+        p.descriptor = new Float32Array(Object.values(p.descriptor));
+      }
+    });
+  }catch(e){
+    console.error('[DB] Failed to load known persons:', e);
+    knownPersons = [];
+  }
   updatePersonsPanel();
-  $('sKnown').textContent = knownPersons.length;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1155,7 +1188,30 @@ async function runFaceDetection(){
         }
       }
     }
-  } catch(e){ /* silently skip */ }
+    // Recovered — clear any stale failure state
+    if(faceDetectFailCount>0) faceDetectFailCount=0;
+  } catch(e){
+    faceDetectFailCount++;
+    console.error('[FaceAPI] Detection error:', e);
+    // Only bother the user if it's failing persistently (not a one-off dropped frame)
+    if(faceDetectFailCount===5){
+      showToast('⚠ FACE DETECTION ERROR — see console');
+    }
+  }
+}
+
+// Picks the largest detected face as the "primary" subject — used to colour the
+// single Holistic face mesh, since Holistic itself only ever tracks one face.
+function primaryDetectedFace(){
+  if(!detectedFaces.length) return null;
+  let best = detectedFaces[0];
+  let bestArea = best.detection.box.width * best.detection.box.height;
+  for(let i=1;i<detectedFaces.length;i++){
+    const f = detectedFaces[i];
+    const area = f.detection.box.width * f.detection.box.height;
+    if(area > bestArea){ best=f; bestArea=area; }
+  }
+  return best;
 }
 
 function matchFace(descriptor){
@@ -1163,10 +1219,15 @@ function matchFace(descriptor){
   let best = null, bestDist = Infinity;
   for(const p of knownPersons){
     if(!p.descriptor) continue;
-    const dist = faceapi.euclideanDistance(descriptor, p.descriptor);
-    if(dist < bestDist){ bestDist=dist; best=p; }
+    try{
+      const dist = faceapi.euclideanDistance(descriptor, p.descriptor);
+      if(dist < bestDist){ bestDist=dist; best=p; }
+    }catch(e){
+      // Skip a corrupted/malformed record instead of letting it break matching for everyone
+      console.warn('[FaceAPI] Skipping unreadable person record', p && p.uid, e);
+    }
   }
-  if(bestDist < FACE_MATCH_THRESHOLD) return { person: best, distance: bestDist };
+  if(best && bestDist < FACE_MATCH_THRESHOLD) return { person: best, distance: bestDist };
   return null;
 }
 
@@ -1267,19 +1328,30 @@ async function saveFacePerson(){
     folder:      name.replace(/\s+/g,'-') + '-' + currentRegData.uid,
   };
 
+  // Try to persist to IndexedDB, but don't let a DB failure lose the registration —
+  // fall back to in-memory so recognition still works for the rest of this session.
+  let savedToDb = true;
   try {
     await dbPut(person);
-    // Restore Float32Array for live matching
-    person.descriptor = new Float32Array(person.descriptor);
-    knownPersons.push(person);
-    updatePersonsPanel();
-    $('sKnown').textContent = knownPersons.length;
+  } catch(e){
+    savedToDb = false;
+    dbAvailable = false;
+    console.error('[DB] Could not persist person, keeping in-memory only:', e);
+  }
+
+  person.descriptor = new Float32Array(person.descriptor);
+  knownPersons.push(person);
+  updatePersonsPanel();
+  updateEngineStatus();
+
+  if(savedToDb){
     $('frpStatus').textContent = '✓ SAVED: ' + name;
     showToast('✓ REGISTERED: ' + name.toUpperCase());
-    setTimeout(()=> dismissRegPopup(), 900);
-  } catch(e){
-    $('frpStatus').textContent = '✗ ERROR: ' + e.message;
+  } else {
+    $('frpStatus').textContent = '⚠ SAVED (SESSION ONLY)';
+    showToast('⚠ REGISTERED — DB UNAVAILABLE, WON\'T PERSIST');
   }
+  setTimeout(()=> dismissRegPopup(), 900);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1302,7 +1374,7 @@ function updatePersonsModal(){
   list.innerHTML = '';
   const count = knownPersons.length;
   $('pmCount'). textContent = count ? `(${count})` : '';
-  $('sKnown').textContent = count;
+  updatePersonsPanel();
 
   if(!count){
     list.innerHTML = '<div class="pm-empty">No persons registered yet.<br><span style="opacity:0.5;font-size:0.42rem;">Faces will be auto-detected and offered for registration.</span></div>';
@@ -1324,17 +1396,22 @@ function updatePersonsModal(){
   });
 }
 
-// Legacy updatePersonsPanel (keep sKnown in sync)
+// Keeps every "known persons count" readout in sync: stats panel + dock badge
 function updatePersonsPanel(){
   $('sKnown').textContent = knownPersons.length;
+  const b = $('personsBubble');
+  if(b) b.textContent = knownPersons.length;
 }
 
 async function deletePerson(uid){
   if(!confirm('Delete this person from recognition database?')) return;
-  await dbDelete(uid);
+  try{
+    await dbDelete(uid);
+  }catch(e){
+    console.error('[DB] Failed to delete from database, removing from this session only:', e);
+  }
   knownPersons = knownPersons.filter(p=>p.uid!==uid);
   updatePersonsModal();
-  $('sKnown').textContent = knownPersons.length;
   showToast('PERSON REMOVED');
 }
 
@@ -1364,7 +1441,11 @@ function loadSettings(){
 }
 
 function saveSettings(){
-  localStorage.setItem(LS_KEY, JSON.stringify(SP));
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(SP));
+  }catch(e){
+    console.warn('[Settings] Could not persist settings (localStorage unavailable):', e);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1409,6 +1490,10 @@ function applySettings(){
   setElVisible('modelBadge',    uiOn && SP.modelBadge);
   setElVisible('fpsPanel',      uiOn);
   setElVisible('camLabel',      uiOn);
+
+  // Persons quick-access button lives in the always-on dock (like Settings/Camera), gated only by its own setting
+  setElVisible('dockPersonBtn', SP.personBtn);
+  setElVisible('dockPersonSep', SP.personBtn);
 
   // Settings panel toggles sync
   syncSettingToggle('togglePanel',   SP.togglePanel);
@@ -1488,6 +1573,21 @@ function showToast(msg){
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ENGINE STATUS — persistent readout (toasts fade, this doesn't),
+// so Face ID / DB problems are visible at a glance instead of silent.
+// ══════════════════════════════════════════════════════════════
+function updateEngineStatus(){
+  const el = $('engineStatus');
+  if(!el) return;
+  const faceOk = faceApiReady;
+  const dbOk   = dbAvailable;
+  el.innerHTML =
+    `<span style="color:${faceOk?'#69ff47':'#ff2d6b'}">● FACE ID ${faceOk?'READY':'OFFLINE'}</span>`+
+    `&nbsp;&nbsp;<span style="color:${dbOk?'#69ff47':'#ff2d6b'}">● DB ${dbOk?'OK':'SESSION ONLY'}</span>`;
+  el.title = dbOk ? '' : 'IndexedDB unavailable — registered faces will not persist after reload. Try a different browser or disable private/incognito mode.';
 }
 
 
@@ -1596,9 +1696,7 @@ async function handleImportFile(event){
     }
 
     updatePersonsPanel();
-    $('sKnown').textContent = knownPersons.length;
-    showToast(`✓ IMPORTED ${imported} · SKIPPED ${skipped}`);
-    if(imported > 0) showToast('✓ FACE ID UPDATED — ' + knownPersons.length + ' KNOWN');
+    showToast(`✓ IMPORTED ${imported} · SKIPPED ${skipped} · ${knownPersons.length} KNOWN`);
   } catch(e){
     showToast('✗ IMPORT FAILED: ' + e.message);
     console.error('[Import]', e);
@@ -1609,8 +1707,13 @@ async function handleImportFile(event){
 // FACE ID OVERLAY DRAWING (on faceCanvas)
 // ══════════════════════════════════════════════════════════════
 function drawFaceIdOverlay(){
-  const W = faceCanvas.width  = video.videoWidth  || window.innerWidth;
-  const H = faceCanvas.height = video.videoHeight || window.innerHeight;
+  const newW = video.videoWidth  || window.innerWidth;
+  const newH = video.videoHeight || window.innerHeight;
+  if(faceCanvas.width!==newW || faceCanvas.height!==newH){
+    faceCanvas.width  = newW;
+    faceCanvas.height = newH;
+  }
+  const W = faceCanvas.width, H = faceCanvas.height;
   faceCtx.clearRect(0,0,W,H);
 
   if(!detectedFaces.length) return;
@@ -1820,8 +1923,12 @@ function startFrameLoop(){
 // DRAWING — HOLISTIC
 // ══════════════════════════════════════════════════════════════
 function resizeCanvas(){
-  canvas.width=video.videoWidth||window.innerWidth;
-  canvas.height=video.videoHeight||window.innerHeight;
+  const w = video.videoWidth||window.innerWidth;
+  const h = video.videoHeight||window.innerHeight;
+  if(canvas.width!==w || canvas.height!==h){
+    canvas.width=w;
+    canvas.height=h;
+  }
 }
 function sg(c,b=12){if(!SHOW.glow){ctx.shadowBlur=0;return;}ctx.shadowColor=c;ctx.shadowBlur=b;}
 function cg(){ctx.shadowBlur=0;}
@@ -1868,9 +1975,10 @@ const LM_BROW_R     = 300;   // right brow top-centre
 const LM_L_CHKBNE   = 123;   // left cheekbone outer
 const LM_R_CHKBNE   = 352;   // right cheekbone outer
 
-function drawForeheadDots(lms, W, H) {
+function drawForeheadDots(lms, W, H, unknown) {
   if (!SHOW.faceForehead) return;
-  const c = '#ffc300';
+  const c  = unknown ? UNKNOWN_COLOR : '#ffc300';
+  const c2 = unknown ? UNKNOWN_COLOR : '#ff8c00';
   // Draw hairline arc dots
   for (const idx of HAIRLINE_ARC) {
     const m = lms[idx]; if (!m) continue;
@@ -1884,9 +1992,9 @@ function drawForeheadDots(lms, W, H) {
   for (const idx of FOREHEAD_MID) {
     const m = lms[idx]; if (!m) continue;
     ctx.save();
-    if (SHOW.glow) { ctx.shadowColor = '#ff8c00'; ctx.shadowBlur = 6; }
+    if (SHOW.glow) { ctx.shadowColor = c2; ctx.shadowBlur = 6; }
     ctx.beginPath(); ctx.arc(m.x * W, m.y * H, 1.8, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff8c00aa'; ctx.fill();
+    ctx.fillStyle = c2 + 'aa'; ctx.fill();
     ctx.restore();
   }
   // Highlight hairline peak with larger dot + label
@@ -1911,10 +2019,11 @@ function drawForeheadDots(lms, W, H) {
   }
 }
 
-function drawFaceMeasurements(lms, W, H) {
+function drawFaceMeasurements(lms, W, H, unknown) {
   if (!SHOW.faceMeasure) return;
-  const mc = '#ff8c00'; // measurement line colour
-  const tc = '#ffc300'; // text colour
+  const mc = unknown ? UNKNOWN_COLOR : '#ff8c00'; // measurement line colour
+  const tc = unknown ? UNKNOWN_COLOR : '#ffc300'; // text colour
+  const uc = c => unknown ? UNKNOWN_COLOR : c; // per-measurement colour override when unrecognised
 
   function mDot(m, r=3.5, c=mc) {
     if (!m) return;
@@ -1962,23 +2071,23 @@ function drawFaceMeasurements(lms, W, H) {
 
   // ── 1. Face Length: hairline → chin (vertical line)
   if (hairline && chin) {
-    mLine(hairline, chin, '#00ffe7', false);
-    mDot(hairline, 4, '#00ffe7');
-    mDot(chin, 4, '#00ffe7');
+    mLine(hairline, chin, uc('#00ffe7'), false);
+    mDot(hairline, 4, uc('#00ffe7'));
+    mDot(chin, 4, uc('#00ffe7'));
     const faceLen = pxDist(hairline, chin).toFixed(0);
     const midX = (hairline.x + chin.x) / 2 * W;
     const midY = (hairline.y + chin.y) / 2 * H;
-    mLabel(midX + 28, midY, `FACE ${faceLen}px`, '#00ffe7');
+    mLabel(midX + 28, midY, `FACE ${faceLen}px`, uc('#00ffe7'));
   }
 
   // ── 2. Forehead Height: hairline → brow midpoint
   if (hairline && lBrow && rBrow) {
     const browMid = { x: (lBrow.x + rBrow.x) / 2, y: (lBrow.y + rBrow.y) / 2 };
-    mLine(hairline, browMid, '#b388ff', true);
+    mLine(hairline, browMid, uc('#b388ff'), true);
     const fhLen = pxDist(hairline, browMid).toFixed(0);
     const midX = (hairline.x + browMid.x) / 2 * W - 30;
     const midY = (hairline.y + browMid.y) / 2 * H;
-    mLabel(midX, midY, `FH ${fhLen}px`, '#b388ff');
+    mLabel(midX, midY, `FH ${fhLen}px`, uc('#b388ff'));
   }
 
   // ── 3. Forehead Width: L temple → R temple
@@ -1993,44 +2102,55 @@ function drawFaceMeasurements(lms, W, H) {
 
   // ── 4. Face Width at nose / cheekbones
   if (lCheek && rCheek) {
-    mLine(lCheek, rCheek, '#ff2d6b', true);
-    mDot(lCheek, 3, '#ff2d6b'); mDot(rCheek, 3, '#ff2d6b');
+    mLine(lCheek, rCheek, uc('#ff2d6b'), true);
+    mDot(lCheek, 3, uc('#ff2d6b')); mDot(rCheek, 3, uc('#ff2d6b'));
     const cw = pxDist(lCheek, rCheek).toFixed(0);
     const midX = (lCheek.x + rCheek.x) / 2 * W;
     const midY = (lCheek.y + rCheek.y) / 2 * H + 14;
-    mLabel(midX, midY, `CHK ${cw}px`, '#ff2d6b');
+    mLabel(midX, midY, `CHK ${cw}px`, uc('#ff2d6b'));
   }
 
   // ── 5. Jaw Width: L jaw end → R jaw end
   if (lJaw && rJaw) {
-    mLine(lJaw, rJaw, '#69ff47', false);
-    mDot(lJaw, 3.5, '#69ff47'); mDot(rJaw, 3.5, '#69ff47');
+    mLine(lJaw, rJaw, uc('#69ff47'), false);
+    mDot(lJaw, 3.5, uc('#69ff47')); mDot(rJaw, 3.5, uc('#69ff47'));
     const jw = pxDist(lJaw, rJaw).toFixed(0);
     const midX = (lJaw.x + rJaw.x) / 2 * W;
     const midY = (lJaw.y + rJaw.y) / 2 * H + 14;
-    mLabel(midX, midY, `JAW ${jw}px`, '#69ff47');
+    mLabel(midX, midY, `JAW ${jw}px`, uc('#69ff47'));
     if (SHOW.labels) {
-      lbl(lJaw.x * W, lJaw.y * H - 6, 'L.jaw', '#69ff47');
-      lbl(rJaw.x * W, rJaw.y * H - 6, 'R.jaw', '#69ff47');
+      lbl(lJaw.x * W, lJaw.y * H - 6, 'L.jaw', uc('#69ff47'));
+      lbl(rJaw.x * W, rJaw.y * H - 6, 'R.jaw', uc('#69ff47'));
     }
   }
 }
 
-function drawFace(raw){
+const UNKNOWN_COLOR = '#ff2d6b'; // matches the red used for unknown identity boxes
+
+function drawFace(raw, idStatus){
   const lms=smoF.smooth(raw);if(!lms)return;
   const W=canvas.width,H=canvas.height;
-  if(SHOW.faceMesh){ctx.save();for(const lm of lms){ctx.beginPath();ctx.arc(lm.x*W,lm.y*H,0.9,0,Math.PI*2);ctx.fillStyle=C.face+'88';ctx.fill();}ctx.restore();}
-  if(SHOW.faceContour){ctx.save();sg(C.face,10);ctx.beginPath();ctx.strokeStyle=C.face+'cc';ctx.lineWidth=1.5;for(let i=0;i<FACE_CONTOUR.length;i++){const m=lms[FACE_CONTOUR[i]];i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
-  if(SHOW.faceBrows)for(const brow of[LEB,REB]){const pts=brow.map(i=>lms[i]).filter(Boolean).map(m=>[m.x*W,m.y*H]);if(pts.length<4)continue;ctx.save();ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();ctx.fillStyle=C.face+'33';ctx.fill();sg(C.face,10);ctx.strokeStyle=C.face+'cc';ctx.lineWidth=1.6;ctx.stroke();cg();ctx.restore();}
+
+  // Identity-aware colouring: an unrecognised face renders fully red so it's obvious
+  // at a glance, without needing to read the small ID label. Known/undetermined faces
+  // keep the normal multi-colour scheme.
+  const unknown  = idStatus === 'unknown';
+  const faceCol  = unknown ? UNKNOWN_COLOR : C.face;
+  const eyeCol   = unknown ? UNKNOWN_COLOR : C.eye;
+  const lipCol   = unknown ? UNKNOWN_COLOR : C.lip;
+
+  if(SHOW.faceMesh){ctx.save();for(const lm of lms){ctx.beginPath();ctx.arc(lm.x*W,lm.y*H,0.9,0,Math.PI*2);ctx.fillStyle=faceCol+'88';ctx.fill();}ctx.restore();}
+  if(SHOW.faceContour){ctx.save();sg(faceCol,10);ctx.beginPath();ctx.strokeStyle=faceCol+'cc';ctx.lineWidth=1.5;for(let i=0;i<FACE_CONTOUR.length;i++){const m=lms[FACE_CONTOUR[i]];i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
+  if(SHOW.faceBrows)for(const brow of[LEB,REB]){const pts=brow.map(i=>lms[i]).filter(Boolean).map(m=>[m.x*W,m.y*H]);if(pts.length<4)continue;ctx.save();ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();ctx.fillStyle=faceCol+'33';ctx.fill();sg(faceCol,10);ctx.strokeStyle=faceCol+'cc';ctx.lineWidth=1.6;ctx.stroke();cg();ctx.restore();}
   if(SHOW.faceEyes){
-    for(const eye of[LEFT_EYE,RIGHT_EYE]){ctx.save();sg(C.eye,14);ctx.beginPath();ctx.strokeStyle=C.eye;ctx.lineWidth=1.5;for(let i=0;i<eye.length;i++){const m=lms[eye[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
-    for(const[ci,ri]of[[LIC,LIR],[RIC,RIR]]){const c=lms[ci];if(!c)continue;const rp=ri.map(i=>lms[i]).filter(Boolean);if(rp.length===4){const dx=rp[0].x*W-c.x*W,dy=rp[0].y*H-c.y*H,r=Math.sqrt(dx*dx+dy*dy);ctx.save();sg(C.eye,18);ctx.beginPath();ctx.arc(c.x*W,c.y*H,r,0,Math.PI*2);ctx.strokeStyle=C.eye+'cc';ctx.lineWidth=1.5;ctx.stroke();cg();ctx.restore();}dot(c.x*W,c.y*H,3.5,C.eye,20);}
+    for(const eye of[LEFT_EYE,RIGHT_EYE]){ctx.save();sg(eyeCol,14);ctx.beginPath();ctx.strokeStyle=eyeCol;ctx.lineWidth=1.5;for(let i=0;i<eye.length;i++){const m=lms[eye[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
+    for(const[ci,ri]of[[LIC,LIR],[RIC,RIR]]){const c=lms[ci];if(!c)continue;const rp=ri.map(i=>lms[i]).filter(Boolean);if(rp.length===4){const dx=rp[0].x*W-c.x*W,dy=rp[0].y*H-c.y*H,r=Math.sqrt(dx*dx+dy*dy);ctx.save();sg(eyeCol,18);ctx.beginPath();ctx.arc(c.x*W,c.y*H,r,0,Math.PI*2);ctx.strokeStyle=eyeCol+'cc';ctx.lineWidth=1.5;ctx.stroke();cg();ctx.restore();}dot(c.x*W,c.y*H,3.5,eyeCol,20);}
   }
-  if(SHOW.faceNose){ctx.save();sg(C.face,8);ctx.beginPath();ctx.strokeStyle=C.face+'66';ctx.lineWidth=1;for(let i=0;i<NB.length;i++){const m=lms[NB[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();dot(lms[1].x*W,lms[1].y*H,3,C.face,14);}
-  if(SHOW.faceLips)for(const lip of[LIP_OUT,LIP_IN]){ctx.save();sg(C.lip,10);ctx.beginPath();ctx.strokeStyle=C.lip+'dd';ctx.lineWidth=1.2;for(let i=0;i<lip.length;i++){const m=lms[lip[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
-  if(SHOW.faceCheeks)for(const i of[...CL,...CR]){const m=lms[i];dot(m.x*W,m.y*H,1.5,C.face+'55',0);}
-  drawForeheadDots(lms, W, H);
-  drawFaceMeasurements(lms, W, H);
+  if(SHOW.faceNose){ctx.save();sg(faceCol,8);ctx.beginPath();ctx.strokeStyle=faceCol+'66';ctx.lineWidth=1;for(let i=0;i<NB.length;i++){const m=lms[NB[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();dot(lms[1].x*W,lms[1].y*H,3,faceCol,14);}
+  if(SHOW.faceLips)for(const lip of[LIP_OUT,LIP_IN]){ctx.save();sg(lipCol,10);ctx.beginPath();ctx.strokeStyle=lipCol+'dd';ctx.lineWidth=1.2;for(let i=0;i<lip.length;i++){const m=lms[lip[i]];if(!m)continue;i===0?ctx.moveTo(m.x*W,m.y*H):ctx.lineTo(m.x*W,m.y*H);}ctx.stroke();cg();ctx.restore();}
+  if(SHOW.faceCheeks)for(const i of[...CL,...CR]){const m=lms[i];dot(m.x*W,m.y*H,1.5,faceCol+'55',0);}
+  drawForeheadDots(lms, W, H, unknown);
+  drawFaceMeasurements(lms, W, H, unknown);
 }
 
 const FG={thumb:[1,2,3,4],index:[5,6,7,8],middle:[9,10,11,12],ring:[13,14,15,16],pinky:[17,18,19,20]};
@@ -2319,24 +2439,37 @@ function updatePortal(r){
 let ft=[];
 function fps(){const n=performance.now();ft.push(n);ft=ft.filter(t=>n-t<1000);return ft.length;}
 
+let lastStatsUpdate = 0;
+const STATS_UPDATE_MS = 150; // ~6-7fps for text/DOM readouts — plenty for numbers, much cheaper than 60fps
+
 function render(){
   resizeCanvas();
   ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Identity state of the primary tracked face this frame: 'known' | 'unknown' | null (not yet evaluated)
+  const primary = primaryDetectedFace();
+  const idStatus = primary ? (primary.identity ? 'known' : 'unknown') : null;
+
   if(lastRes){
     const r=lastRes;
     if(SHOW.body&&r.poseLandmarks)drawBody(r.poseLandmarks);
-    if(SHOW.face&&r.faceLandmarks)drawFace(r.faceLandmarks);
+    if(SHOW.face&&r.faceLandmarks)drawFace(r.faceLandmarks, idStatus);
     if(SHOW.hands&&SHOW.handLeft&&r.leftHandLandmarks)drawHand(r.leftHandLandmarks,'Left');
     if(SHOW.hands&&SHOW.handRight&&r.rightHandLandmarks)drawHand(r.rightHandLandmarks,'Right');
     if(SP.filters)updatePortal(r);
-    updateStats(r);
   }
   // Draw face recognition overlay
   drawFaceIdOverlay();
 
-  $('fpsVal').textContent=fps();
-  const d=new Date();
-  $('timeDisplay').textContent=d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0');
+  // Text/DOM readouts don't need 60fps — throttle to keep frame drawing smooth
+  const now = performance.now();
+  if(now - lastStatsUpdate > STATS_UPDATE_MS){
+    lastStatsUpdate = now;
+    if(lastRes) updateStats(lastRes);
+    $('fpsVal').textContent=fps();
+    const d=new Date();
+    $('timeDisplay').textContent=d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0');
+  }
 }
 
 function updateStats(r){
@@ -2465,8 +2598,17 @@ async function startTracking(){
   $('loadScreen').style.display='flex';
 
   setLoad(5,'Opening database...');
-  await openDB();
-  await loadKnownPersons();
+  try{
+    await openDB();
+    await loadKnownPersons();
+    dbAvailable = true;
+  }catch(e){
+    console.error('[DB] Could not open Face ID database — continuing in session-only mode:', e);
+    db = null;
+    dbAvailable = false;
+    knownPersons = [];
+    updatePersonsPanel();
+  }
 
   setLoad(12,'Requesting camera permission...');
   let initStream;
@@ -2512,9 +2654,12 @@ async function startTracking(){
   $('loadScreen').style.display='none';
   $('trackerUI').style.display='block';
   applySettings(); // re-apply now that all elements exist
+  updateEngineStatus();
 
   if(!faceApiReady){
     showToast('⚠ FACE-API MODELS NOT LOADED — recognition disabled');
+  } else if(!dbAvailable){
+    showToast('⚠ FACE ID READY BUT DB UNAVAILABLE — session only');
   } else {
     showToast('✓ FACE ID READY — ' + knownPersons.length + ' KNOWN PERSONS');
   }
